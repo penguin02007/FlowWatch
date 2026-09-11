@@ -33,7 +33,7 @@ services:
     networks:
       - flowwatch-net
 
-flowwatch-app:
+  flowwatch-app:
     build: .
     container_name: flowwatch-ui
     ports:
