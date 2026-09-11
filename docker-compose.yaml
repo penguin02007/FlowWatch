@@ -3,7 +3,7 @@ version: '3.8'
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
-    container_name: netops-es
+    container_name: flowwatch-es
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -16,11 +16,11 @@ services:
       timeout: 5s
       retries: 10
     networks:
-      - netops-net
+      - flowwatch-net
 
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.14.0
-    container_name: netops-filebeat
+    container_name: flowwatch-filebeat
     user: root
     command: ["filebeat", "-e", "--strict.perms=false"]
     volumes:
@@ -31,11 +31,11 @@ services:
       elasticsearch:
         condition: service_healthy
     networks:
-      - netops-net
+      - flowwatch-net
 
-  copilot-app:
-    build: ./app
-    container_name: netops-copilot-ui
+flowwatch-app:
+    build: .
+    container_name: flowwatch-ui
     ports:
       - "8501:8501"
     environment:

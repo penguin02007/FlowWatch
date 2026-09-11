@@ -1,6 +1,6 @@
 {
-  "name": "Full Stack Dev Setup",
-  "dockerComposeFile": ["../docker-compose.yml"],
+  "name": "Dev Environment",
+  "dockerComposeFile": ["../docker-compose.yaml"],
   "service": "app",
   "workspaceFolder": "/workspace",
   "customizations": {
