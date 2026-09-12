@@ -1,0 +1,87 @@
+--- docker compose ps ---
+NAME                IMAGE                                                  COMMAND                  SERVICE             CREATED          STATUS                    PORTS
+flow-collector      elastiflow/flow-collector:7.26.3                       "/bin/sh -c $BINARY_GǪ"   flow-collector      33 minutes ago   Up 32 minutes             0.0.0.0:2055->2055/udp, [::]:2055->2055/udp
+flowwatch-backend   flowwatch-flowwatch-backend                            "python -m streamlitGǪ"   flowwatch-backend   37 minutes ago   Up 37 minutes             0.0.0.0:8501->8501/tcp, [::]:8501->8501/tcp
+flowwatch-es        docker.elastic.co/elasticsearch/elasticsearch:8.17.6   "/bin/tini -- /usr/lGǪ"   elasticsearch       37 minutes ago   Up 32 minutes (healthy)   0.0.0.0:9200->9200/tcp, [::]:9200->9200/tcp
+kibana              docker.elastic.co/kibana/kibana:8.17.6                 "/bin/tini -- /usr/lGǪ"   kibana              37 minutes ago   Up 37 minutes             0.0.0.0:5601->5601/tcp, [::]:5601->5601/tcp
+--- flow logs ---
+nflow-generator  | time="2026-09-12T02:16:38Z" level=info msg="sending netflow data to a collector ip: flow-collector and port: 2055. \nUse ctrl^c to terminate the app."
+nflow-generator  | time="2026-09-12T02:16:38Z" level=fatal msg="Error connecting to the target collector: write udp 172.18.0.6:44729->172.18.0.5:2055: write: connection refused"
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.config[default]","caller":"flowcoll/app.go:76","msg":"EF_OUTPUT_OTLP_HEALTH_SERVER_TLS_CERT_FILE="}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.config[default]","caller":"flowcoll/app.go:76","msg":"EF_OUTPUT_OTLP_HEALTH_SERVER_TLS_KEY_FILE="}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.config[default]","caller":"flowcoll/app.go:76","msg":"EF_OUTPUT_OTLP_HEALTH_SERVER_TLS_VERIFICATION_TYPE=NoClientCert"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.config[default]","caller":"flowcoll/app.go:76","msg":"EF_OUTPUT_OTLP_HEALTH_SERVER_ADDR_PORT=9412"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.config[default]","caller":"flowcoll/app.go:76","msg":"EF_OUTPUT_OTLP_HEALTH_SERVER_ADDR_HOST=0.0.0.0"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.license","caller":"lic/license.go:157","msg":"license information","expiration":"0001-01-01T00:00:00.000Z","level":0,"flow_records_per_second":500,"telemetry_hosts":25,"telemetry_objects":0}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.license","caller":"lic/license.go:167","msg":"community license detected, this license does not expire"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.httpserver","caller":"httpserver/httpserver.go:34","msg":"endpoint exposed","url":"http://0.0.0.0:8080/readyz"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.httpserver","caller":"httpserver/httpserver.go:34","msg":"endpoint exposed","url":"http://0.0.0.0:8080/livez"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.httpserver","caller":"httpserver/httpserver.go:34","msg":"endpoint exposed","url":"http://0.0.0.0:8080/support-bundle"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.583Z","logger":"flowcoll.httpserver","caller":"httpserver/httpserver.go:34","msg":"endpoint exposed","url":"http://0.0.0.0:8080/metrics"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.591Z","logger":"udpserver[0.0.0.0:9995]","caller":"server/udpserver.go:68","msg":"running","address":"0.0.0.0:9995"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.591Z","logger":"udpserver[0.0.0.0:2055]","caller":"server/udpserver.go:68","msg":"running","address":"0.0.0.0:2055"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.591Z","logger":"udpserver[0.0.0.0:6343]","caller":"server/udpserver.go:68","msg":"running","address":"0.0.0.0:6343"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.591Z","logger":"udpserver[0.0.0.0:4739]","caller":"server/udpserver.go:68","msg":"running","address":"0.0.0.0:4739"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.821Z","logger":"enricher.app-id_memstore","caller":"appid/memstore.go:73","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.821Z","logger":"enricher.app-id_memstore","caller":"appid/memstore.go:62","msg":"listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.ip_memstore","caller":"ip/memstore.go:74","msg":"in-memory store listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.ip_memstore","caller":"ip/memstore.go:63","msg":"in-memory store listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.ip_custodian","caller":"enrichapp/custodian.go:105","msg":"listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.ip_custodian","caller":"enrichapp/custodian.go:116","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.ip_custodian","caller":"enrichapp/custodian.go:126","msg":"expiration checker is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.appid_custodian","caller":"enrichapp/custodian.go:105","msg":"listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.appid_custodian","caller":"enrichapp/custodian.go:126","msg":"expiration checker is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.842Z","logger":"enricher.appid_custodian","caller":"enrichapp/custodian.go:116","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.901Z","logger":"enum_enricher.memstore","caller":"enum/memstore.go:73","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.901Z","logger":"enum_enricher.memstore","caller":"enum/memstore.go:62","msg":"listening for enums to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.902Z","logger":"enum_enricher.custodian","caller":"enrichenum/custodian.go:96","msg":"listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.902Z","logger":"enum_enricher.custodian","caller":"enrichenum/custodian.go:117","msg":"expiration checker is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.902Z","logger":"enum_enricher.custodian","caller":"enrichenum/custodian.go:107","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.902Z","logger":"ipaddr_enricher.hostname_enricher","caller":"hostname/hostname.go:73","msg":"started"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.910Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:285","msg":"initializing threat type collection"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:38.926Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:351","msg":"fetching resource from server: RESOURCE_THREAT_COLLECTION"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:39.292Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:290","msg":"Threat Type size: 53230 bytes"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:39.293Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:264","msg":"initializing ipdb"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:39.293Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:351","msg":"fetching resource from server: RESOURCE_IP_DB_COMPRESSED"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:16:55.969Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:269","msg":"ipdb size: 361242376 bytes"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:47:35.166Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:227","msg":"resources successfully initialized"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:47:42.252Z","logger":"ipaddr_enricher.netintel_threats","caller":"netintel/enricher.go:247","msg":"running netintel"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:48:55.176Z","logger":"ipaddr_enricher.memstore","caller":"enrichipaddr/memstore.go:39","msg":"listening for ips to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:48:55.149Z","logger":"ipaddr_enricher.memstore","caller":"enrichipaddr/memstore.go:50","msg":"store listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.301Z","logger":"ipaddr_enricher.custodian","caller":"enrichipaddr/custodian.go:52","msg":"listening for ips to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.301Z","logger":"ipaddr_enricher.custodian","caller":"enrichipaddr/custodian.go:63","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.301Z","logger":"ipaddr_enricher.custodian","caller":"enrichipaddr/custodian.go:73","msg":"expiration checker is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.375Z","logger":"netif_enricher","caller":"enrichnetif/memstore.go:52","msg":"in-memory store listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.375Z","logger":"netif_enricher","caller":"enrichnetif/memstore.go:41","msg":"in-memory store listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.391Z","logger":"netif_enricher.custodian","caller":"enrichnetif/custodian.go:66","msg":"listening for entries to store"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.392Z","logger":"netif_enricher.custodian","caller":"enrichnetif/custodian.go:76","msg":"expiration checker is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.391Z","logger":"netif_enricher.custodian","caller":"enrichnetif/custodian.go:55","msg":"listening for IPs to delete"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.397Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.397Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.396Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.398Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.396Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.396Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.397Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.396Z","logger":"flow_processor","caller":"flowprocessor/flow.go:33","msg":"flow record processor is running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.409Z","logger":"flowcoll.writer_pool","caller":"writer/writer.go:35","msg":"running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.409Z","logger":"flowcoll.writer_pool","caller":"writer/writer.go:35","msg":"running"}
+flow-collector   | {"level":"info","ts":"2026-09-12T02:49:16.417Z","logger":"flowcoll.metrics_provider","caller":"metrics/provider.go:182","msg":"gathering metrics"}
+--- ES indices ---
+health status index                                                              uuid                   pri rep docs.count docs.deleted store.size pri.store.size dataset.size
+green  open   .internal.alerts-transform.health.alerts-default-000001            VEqFICWJQwi8o3urdQ3Xog   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-observability.logs.alerts-default-000001          10mDVEcmQhW1ziFg-Zq04w   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-observability.uptime.alerts-default-000001        ccp4_mMzTB2aizciDIxxxg   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-ml.anomaly-detection.alerts-default-000001        qB_rEmFjRouo1n0sFLNArg   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-observability.slo.alerts-default-000001           KYTX3byRQuOH6TaEnYnx9g   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-default.alerts-default-000001                     9lXR2msMSjiZg2yCy0i2oQ   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-observability.apm.alerts-default-000001           VAO7pbyQRv6NEIYKUGw-Dg   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-observability.metrics.alerts-default-000001       hkdEy15MSQ-aort5h7efLw   1   0          0            0       249b           249b         249b
+green  open   .kibana-observability-ai-assistant-conversations-000001            0gmHttH_TxOVf7q5QXIniQ   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-ml.anomaly-detection-health.alerts-default-000001 PLMM3jP2RmOQKVQ0TWc3_Q   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-observability.threshold.alerts-default-000001     6-P1_U-WQyCh1dtfc8XL6A   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-security.alerts-default-000001                    9SXQNkzMQgG8W1lLyM_kfQ   1   0          0            0       249b           249b         249b
+green  open   .kibana-observability-ai-assistant-kb-000001                       eCgy-CEYRl-T_P2O4iO_sw   1   0          0            0       249b           249b         249b
+green  open   .internal.alerts-stack.alerts-default-000001                       SSR1H08MQXmBdS5kcWzy9A   1   0          0            0       249b           249b         249b
+--- Kibana saved objects ---
+{"page":1,"per_page":20,"total":0,"saved_objects":[]}
