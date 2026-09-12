@@ -48,11 +48,10 @@ services:
   nflow-generator:
       image: networkstatic/nflow-generator:latest
       container_name: nflow-generator
-      command: ["-t", "flow-collector", "-p", "2055", "-c", "32"]
+      network_mode: "service:flow-collector"
+      command: ["-t", "127.0.0.1", "-p", "2055", "-c", "32"]
       depends_on:
         - flow-collector
-      networks:
-        - netflow-net
 
   flowwatch-backend:
     build:
