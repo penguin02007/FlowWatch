@@ -6,7 +6,7 @@ from elasticsearch import Elasticsearch
 
 es = Elasticsearch(
     os.getenv("ES_HOST", "http://elasticsearch:9200"),
-    api_version="8.14",
+    api_version="8.17",
     request_timeout=30,
 )
 

@@ -7,7 +7,7 @@ from generate_flows import inject_traffic_anomaly
 
 es = Elasticsearch(
     os.getenv("ES_HOST", "http://elasticsearch:9200"),
-    api_version="8.14",
+    api_version="8.17",
     request_timeout=30,
 )
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY", ""))
