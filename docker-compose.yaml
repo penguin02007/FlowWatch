@@ -38,6 +38,7 @@ services:
       ports:
         - "2055:2055/udp"
       environment:
+        - EF_LICENSE_ACCEPTED=true
         - EF_OUTPUT_ELASTICSEARCH_ES_HOSTS=http://elasticsearch:9200
       depends_on:
         - elasticsearch
