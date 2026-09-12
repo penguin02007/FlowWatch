@@ -45,11 +45,17 @@ services:
       networks:
         - netflow-net
 
-  nflow-generator:
-      image: networkstatic/nflow-generator:latest
-      container_name: nflow-generator
+  netflow-sender:
+      build:
+        context: ./netflow-sender
+      container_name: netflow-sender
       restart: 'unless-stopped'
-      command: ["-t", "flow-collector", "-p", "2055", "-c", "32", "-s", "ssh"]
+      environment:
+        - FLOW_COLLECTOR_HOST=flow-collector
+        - FLOW_COLLECTOR_PORT=2055
+        - FLOW_COUNT=1
+        - SEND_INTERVAL=1
+        - PACKETS=100
       depends_on:
         - flow-collector
       networks:
