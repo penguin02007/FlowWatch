@@ -48,7 +48,7 @@ services:
   nflow-generator:
       image: networkstatic/nflow-generator:latest
       container_name: nflow-generator
-      command: ["-t", "flow-collector", "-p", "2055", "-c", "10000"]
+      command: ["-t", "flow-collector", "-p", "2055", "-c", "32"]
       depends_on:
         - flow-collector
       networks:
