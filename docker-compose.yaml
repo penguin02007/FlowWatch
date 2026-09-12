@@ -49,7 +49,7 @@ services:
       image: networkstatic/nflow-generator:latest
       container_name: nflow-generator
       restart: 'unless-stopped'
-      command: ["-t", "flow-collector", "-p", "2055", "-c", "32"]
+      command: ["-t", "flow-collector", "-p", "2055", "-c", "32", "-s", "ssh"]
       depends_on:
         - flow-collector
       networks:
