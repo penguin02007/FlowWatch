@@ -27,17 +27,17 @@ def fetch_top_flow_metrics():
         "size": 0,
         "aggs": {
             "top_talkers": {
-                "terms": {"field": "netflow.source_ipv4_address.keyword", "size": 3, "order": {"total_bytes": "desc"}},
+                "terms": {"field": "flow.src.ip.addr.keyword", "size": 3, "order": {"total_bytes": "desc"}},
                 "aggs": {
-                    "total_bytes": {"sum": {"field": "netflow.in_bytes"}},
-                    "top_dest_port": {"terms": {"field": "netflow.destination_transport_port", "size": 1}}
+                    "total_bytes": {"sum": {"field": "flow.in.bytes"}},
+                    "top_dest_port": {"terms": {"field": "flow.dst.l4.port.id", "size": 1}}
                 }
             }
         }
     }
     try:
-        res = es.search(index="netflow-demo-*", body=query)
-        buckets = res['aggregations']['top_talkers']['buckets']
+        res = es.search(index="elastiflow-*", body=query)
+        buckets = res.get("aggregations", {}).get("top_talkers", {}).get("buckets", [])
         return [
             {
                 "source_ip": b['key'],
