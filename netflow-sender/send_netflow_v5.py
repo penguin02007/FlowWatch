@@ -21,7 +21,7 @@ def build_record(idx: int):
     dst_ip = "10.0.0.2"
     next_hop = "192.168.0.1"
     return struct.pack(
-        "!IIIHHIIIIHHHBBBHHBBB",
+        "!IIIHHIIIIHHBBBBHHBBH",
         ip_to_int(src_ip),
         ip_to_int(dst_ip),
         ip_to_int(next_hop),
@@ -48,7 +48,7 @@ def build_record(idx: int):
 def build_packet():
     now = int(time.time())
     header = struct.pack(
-        "!HHIIIIIHH",
+        "!HHIIII BBH",
         5,
         FLOW_COUNT,
         0,
@@ -60,7 +60,10 @@ def build_packet():
         0,
     )
     records = b"".join(build_record(i) for i in range(FLOW_COUNT))
-    return header + records
+    packet = header + records
+    if len(packet) != 24 + (48 * FLOW_COUNT):
+        raise ValueError(f"Invalid NetFlow v5 packet size: {len(packet)} bytes for {FLOW_COUNT} records")
+    return packet
 
 
 def main():
