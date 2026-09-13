@@ -40,17 +40,38 @@ services:
       environment:
         - EF_LICENSE_ACCEPTED=true
         - EF_OUTPUT_ELASTICSEARCH_ES_HOSTS=http://elasticsearch:9200
+        - EF_FLOW_SERVER_UDP_IP=0.0.0.0
+        - EF_FLOW_SERVER_UDP_PORT=2055,4739,6343,9995
+        - EF_LOGGER_ENCODING=json
+        - EF_API_IP=0.0.0.0
+        - EF_API_PORT=8080
       depends_on:
         - elasticsearch
       networks:
         - netflow-net
 
   nflow-generator:
-      image: networkstatic/nflow-generator:latest
+      build:
+        context: ./netflow-sender
+        dockerfile: Dockerfile
       container_name: nflow-generator
       restart: 'unless-stopped'
-      command: ["-t", "127.0.0.1", "-p", "2055", "-f"]
+      environment:
+        - FLOW_COLLECTOR_HOST=flow-collector
+        - FLOW_COLLECTOR_PORT=2055
+        - FLOW_COUNT=1
+        - SEND_INTERVAL=1.0
       depends_on:
+        - flow-collector
+      networks:
+        - netflow-net
+
+  udp-probe:
+      image: ubuntu:22.04
+      container_name: udp-probe
+      command: ["/bin/bash", "-lc", "apt-get update && apt-get install -y iproute2 tcpdump iputils-ping && tcpdump -i any udp port 2055 -nn -vv -U"]
+      depends_on:
+        - nflow-generator
         - flow-collector
       networks:
         - netflow-net
