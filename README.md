@@ -4,33 +4,54 @@ A docker-compose demo in which an LLM answers network performance questions as t
 ("why was the ERP slow yesterday?", "is video traffic growing?"). It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
+
+
 ![FlowWatch demo: the ERP slowdown traced to host 10.10.8.77, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
 
-*Demo 1: "Why was the ERP app slow yesterday afternoon?" → the MPLS link hit 97%, caused by
-`10.10.8.77`, with the host's graphs opened in Kibana. Demo 2: a live incident injected through
-the generator → "What is using the internet link right now?" (sped up; 28s).*
+*In the first demo, the question "Why was the ERP app slow yesterday afternoon?" leads the LLM
+to find that the MPLS link hit 97% because of host `10.10.8.77`, and the host's graphs then open
+in Kibana. In the second demo, a live incident is injected through the generator and the LLM is
+asked "What is using the internet link right now?" The recording is sped up to 28 seconds.*
 
 ## Architecture
 
-**NetFlow v9 / IPFIX → collector → Elasticsearch time series data stream → LLM function calling over the Aggregations API**
+Routers export NetFlow v9 and IPFIX to a collector, which stores one-minute rollups in an
+Elasticsearch time series data stream. An LLM then answers questions by calling tools, and each
+tool queries that data through the Elasticsearch Aggregations API.
 
-```
- flow-generator ──UDP──▶ flow-collector ──bulk──▶ Elasticsearch TSDS ◀──aggregations── flowwatch-app ◀──▶ Gemini
- (NetFlow v9 +           (v9/IPFIX decode,        metrics-netflow.        (8 function-calling tools,       (function
-  IPFIX exporters,        enrich, 1-min           flows-default           Streamlit chat UI)                calling)
-  scenario API :8000)     rollups)                (index.mode: time_series)
+```text
+┌──────────────────────┐   NetFlow v9 / IPFIX   ┌──────────────────────┐
+│    flow-generator    │ ───── UDP 2055 ──────▶ │    flow-collector    │
+│  edge-rtr-01    v9   │                        │   template decode    │
+│  dc-core-01  IPFIX   │                        │  enrich site/app/if  │
+│  incident API :8000  │                        └──────────┬───────────┘
+└──────────▲───────────┘                                   │ _bulk, 1-min rollups
+           │ start / stop incidents                        ▼
+┌──────────┴───────────┐   aggregations         ┌──────────────────────────────────┐
+│    flowwatch-app     │ ─────────────────────▶ │          Elasticsearch           │
+│   Streamlit :8501    │ ◀────── buckets ────── │   TSDS metrics-netflow.flows-*   │
+│ agent loop, 8 tools  │                        │     index.mode: time_series      │
+│                      │                        │       flowwatch-inventory        │
+└──────┬───▲───────┬───┘                        └────────────────▲─────────────────┘
+ prompt│   │ tool  │                                             │ Lens queries
+       │   │ calls └── deep links (KQL + time) ──────┐           │
+       ▼   │                                         ▼           │
+┌──────────┴───────────┐                        ┌────────────────┴─────────────────┐
+│   Gemini 3.8 Flash   │                        │           Kibana :5601           │
+│   function calling   │                        │    FlowWatch traffic explorer    │
+└──────────────────────┘                        └──────────────────────────────────┘
 ```
 
 | Service | What it does |
 |---|---|
 | `flow-generator` | Simulates `edge-rtr-01` (**NetFlow v9**) and `dc-core-01` (**IPFIX**) exporting real UDP packets every 5s. Traffic follows business hours, weekends, a nightly backup and link capacity limits. HTTP API on `:8000` injects incidents. |
 | `flow-collector` | Template-aware v9/IPFIX decoder. Adds site, application and interface names to each flow, rolls flows up per minute per dimension set, and writes to the TSDS. |
-| `es-setup` | One-shot job. Creates the TSDS index template, the `flowwatch-inventory` index (interfaces, capacities, applications), and **14 days of backfilled history**. Re-runs are idempotent. |
+| `es-setup` | Creates TSDS index template, the `flowwatch-inventory` index (interfaces, capacities, applications), and **14 days of backfilled history**. Re-runs are idempotent. |
 | `flowwatch-app` | Streamlit chat on [localhost:8501](http://localhost:8501). Gemini picks tools, and each tool runs Elasticsearch aggregations. Every request body is shown in the UI. |
 | `kibana` | [localhost:5601](http://localhost:5601), for exploring `metrics-netflow.flows-*` directly. |
-| `kibana-setup` | One-shot job. Creates the `FlowWatch flows (TSDS)` data view and the **FlowWatch traffic explorer** dashboard (throughput by application, conversation and egress interface, plus a top-conversations table). |
+| `kibana-setup` | Creates the `FlowWatch flows (TSDS)` data view and the **FlowWatch traffic explorer** dashboard (throughput by application, conversation and egress interface, plus a top-conversations table). |
 
-**Evidence in Kibana:** under each answer, the app links every host IP the answer mentions to
+**Kibana Dashboard:** We know LLM sometimes hallucinate. Under each answer, the app links every host IP mentions to
 the traffic explorer dashboard. The link carries a KQL query (`source.ip:"10.10.8.77" or
 destination.ip:"10.10.8.77"`) and the time window of the tool call that found the host. Each
 tool call in the evidence panel also has an *open this slice in Kibana* link that applies the
@@ -61,17 +82,30 @@ A TSDS write index only accepts data within `index.look_back_time` (7 days at mo
 data goes to a normal write index. This is the same technique as Elastic's "reindex a TSDS"
 guide; see `pipeline/flowwatch/setup_es.py`.
 
-## LLM tools (all Elasticsearch aggregations)
+## LLM tools
+
+An LLM tool is a function the model can ask the app to run. FlowWatch describes each tool to
+Gemini by name, purpose and a JSON schema of its parameters (time window, group-by dimension,
+filters). When a question comes in, Gemini doesn't read raw data, and apart from the
+`run_aggregation` escape hatch it doesn't write queries itself. Instead it replies with
+*function calls*, for example `top_talkers(start="2026-09-29T13:00",
+dimension="conversation", filters={interface_out: "Gi0/0/1"})`. The app turns each call
+into an Elasticsearch aggregation request, runs it against the TSDS, and sends back a compact
+JSON summary (Mbps, % of link capacity, peak times, baselines). Gemini can chain several calls,
+for example first finding the congested link, then who used it, then comparing with normal
+days, and it writes the answer only from those results. This keeps answers grounded in real
+telemetry, keeps the questions to Elasticsearch efficient, and makes every step auditable: the
+UI shows each tool call, the exact request body and the result the model saw.
 
 | Tool | Aggregations used |
 |---|---|
-| `get_network_inventory` | inventory index + `min`/`max` on `@timestamp` |
-| `bandwidth_timeseries` | `terms` → `date_histogram` → `sum` |
-| `top_talkers` | `terms`/`multi_terms` → `sum`, `date_histogram` + `max_bucket` |
-| `interface_utilization` | `terms` per direction → `date_histogram` + `max_bucket` + `percentiles_bucket` (p95), compared with link capacity |
-| `compare_to_baseline` | `filters` (current vs same time on previous comparable days) → `terms` → median |
-| `traffic_trend` | `date_histogram` (calendar day, site TZ) → hourly `date_histogram` + `max_bucket`, then week-over-week change and a regression |
-| `detect_anomalies` | `terms` → `date_histogram` over window + baseline days, each bucket compared with the same time of day on earlier days |
+| `get_network_inventory` | Reads the inventory index, and uses `min` and `max` on `@timestamp` to report the available data range |
+| `bandwidth_timeseries` | Groups by `terms`, splits each group into time buckets with `date_histogram`, and adds up bytes with `sum` |
+| `top_talkers` | Ranks groups with `terms` (or `multi_terms` for conversations) by summed bytes, and finds each group's peak with `date_histogram` and `max_bucket` |
+| `interface_utilization` | Splits traffic per interface and direction with `terms`, buckets it over time with `date_histogram`, takes the peak with `max_bucket` and the 95th percentile with `percentiles_bucket`, then compares both with link capacity |
+| `compare_to_baseline` | Uses `filters` to pull the current window and the same time on previous comparable days in one request, groups each with `terms`, and compares the current value with the median of the earlier days |
+| `traffic_trend` | Buckets traffic by calendar day in the site time zone with `date_histogram`, finds each day's busiest hour with a nested hourly `date_histogram` and `max_bucket`, then calculates the week-over-week change and a growth rate |
+| `detect_anomalies` | Groups with `terms` and buckets with `date_histogram` across the window and the baseline days, then compares each bucket with the same time of day on earlier days |
 | `run_aggregation` | escape hatch: the LLM writes its own aggregation DSL (no scripts) |
 
 ## Demo script
