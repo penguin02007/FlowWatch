@@ -21,21 +21,21 @@ tool queries that data through the Elasticsearch Aggregations API.
 
 ```text
 ┌──────────────────────┐   NetFlow v9 / IPFIX   ┌──────────────────────┐
-│    flow-generator    │ ───── UDP 2055 ──────▶ │    flow-collector    │
+│    flow-generator    │ ───── UDP 2055 ──────> │    flow-collector    │
 │  edge-rtr-01    v9   │                        │   template decode    │
 │  dc-core-01  IPFIX   │                        │  enrich site/app/if  │
 │  incident API :8000  │                        └──────────┬───────────┘
-└──────────▲───────────┘                                   │ _bulk, 1-min rollups
-           │ start / stop incidents                        ▼
+└──────────^───────────┘                                   │ _bulk, 1-min rollups
+           │ start / stop incidents                        V
 ┌──────────┴───────────┐   aggregations         ┌──────────────────────────────────┐
-│    flowwatch-app     │ ─────────────────────▶ │          Elasticsearch           │
-│   Streamlit :8501    │ ◀────── buckets ────── │   TSDS metrics-netflow.flows-*   │
+│    flowwatch-app     │ ─────────────────────> │          Elasticsearch           │
+│   Streamlit :8501    │ <────── buckets ────── │   TSDS metrics-netflow.flows-*   │
 │ agent loop, 8 tools  │                        │     index.mode: time_series      │
 │                      │                        │       flowwatch-inventory        │
-└──────┬───▲───────┬───┘                        └────────────────▲─────────────────┘
- prompt│   │ tool  │                                             │ Lens queries
+└──────┬───────────┬───┘                        └──────────────────────────────────┘
+ prompt│   ^ tool  │                                             ^ Lens queries
        │   │ calls └── deep links (KQL + time) ──────┐           │
-       ▼   │                                         ▼           │
+       V   │                                         V           │
 ┌──────────┴───────────┐                        ┌────────────────┴─────────────────┐
 │   Gemini 3.8 Flash   │                        │           Kibana :5601           │
 │   function calling   │                        │    FlowWatch traffic explorer    │
@@ -82,17 +82,19 @@ A TSDS write index only accepts data within `index.look_back_time` (7 days at mo
 data goes to a normal write index. This is the same technique as Elastic's "reindex a TSDS"
 guide; see `pipeline/flowwatch/setup_es.py`.
 
-## LLM tools
+## LLM
 
-An LLM tool is a function the model can ask the app to run. FlowWatch describes each tool to
+LLM uses "tool" and the model can ask the app to run. FlowWatch describes each tool to
 Gemini by name, purpose and a JSON schema of its parameters (time window, group-by dimension,
 filters). When a question comes in, Gemini doesn't read raw data, and apart from the
 `run_aggregation` escape hatch it doesn't write queries itself. Instead it replies with
 *function calls*, for example `top_talkers(start="2026-09-29T13:00",
-dimension="conversation", filters={interface_out: "Gi0/0/1"})`. The app turns each call
+dimension="conversation", filters={interface_out: "Gi0/0/1"})`.
+
+The app turns each call
 into an Elasticsearch aggregation request, runs it against the TSDS, and sends back a compact
-JSON summary (Mbps, % of link capacity, peak times, baselines). Gemini can chain several calls,
-for example first finding the congested link, then who used it, then comparing with normal
+JSON summary (Mbps, % of link capacity, peak times, baselines). Gemini can chain several calls - 
+for example, first finding the congested link, then who used it, then comparing with normal
 days, and it writes the answer only from those results. This keeps answers grounded in real
 telemetry, keeps the questions to Elasticsearch efficient, and makes every step auditable: the
 UI shows each tool call, the exact request body and the result the model saw.
