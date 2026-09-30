@@ -4,6 +4,10 @@ A docker-compose demo in which an LLM answers network performance questions as t
 ("why was the ERP slow yesterday?", "is video traffic growing?"). It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
+## Architecture
+
+**NetFlow v9 / IPFIX → collector → Elasticsearch time series data stream → LLM function calling over the Aggregations API**
+
 ```
  flow-generator ──UDP──▶ flow-collector ──bulk──▶ Elasticsearch TSDS ◀──aggregations── flowwatch-app ◀──▶ Gemini
  (NetFlow v9 +           (v9/IPFIX decode,        metrics-netflow.        (8 function-calling tools,       (function
@@ -18,6 +22,14 @@ correlating historical flow trends and bandwidth use in Elasticsearch.
 | `es-setup` | One-shot job. Creates the TSDS index template, the `flowwatch-inventory` index (interfaces, capacities, applications), and **14 days of backfilled history**. Re-runs are idempotent. |
 | `flowwatch-app` | Streamlit chat on [localhost:8501](http://localhost:8501). Gemini picks tools, and each tool runs Elasticsearch aggregations. Every request body is shown in the UI. |
 | `kibana` | [localhost:5601](http://localhost:5601), for exploring `metrics-netflow.flows-*` directly. |
+| `kibana-setup` | One-shot job. Creates the `FlowWatch flows (TSDS)` data view and the **FlowWatch traffic explorer** dashboard (throughput by application, conversation and egress interface, plus a top-conversations table). |
+
+**Evidence in Kibana:** under each answer, the app links every host IP the answer mentions to
+the traffic explorer dashboard. The link carries a KQL query (`source.ip:"10.10.8.77" or
+destination.ip:"10.10.8.77"`) and the time window of the tool call that found the host. Each
+tool call in the evidence panel also has an *open this slice in Kibana* link that applies the
+same filters. If Kibana isn't reachable at `http://localhost:5601` from the browser, set
+`KIBANA_PUBLIC_URL`.
 
 ## Quick start
 

@@ -35,11 +35,23 @@ services:
       - "5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SECURITY_SHOWINSECURECLUSTERWARNING=false
     depends_on:
       elasticsearch:
         condition: service_healthy
     networks:
       - netflow-net
+
+  # One-shot: Kibana data view + "FlowWatch traffic explorer" dashboard (the chat links into it).
+  kibana-setup:
+    <<: *pipeline
+    container_name: kibana-setup
+    command: ["python", "-m", "flowwatch.setup_kibana"]
+    environment:
+      KIBANA_HOST: http://kibana:5601
+    restart: "no"
+    depends_on:
+      - kibana
 
   # One-shot: TSDS index template + data stream, inventory, and history backfill.
   es-setup:
@@ -92,6 +104,7 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
       SITE_TZ: ${SITE_TZ:-UTC}
       GENERATOR_URL: http://flow-generator:8000
+      KIBANA_PUBLIC_URL: ${KIBANA_PUBLIC_URL:-http://localhost:5601}
     depends_on:
       es-setup:
         condition: service_completed_successfully

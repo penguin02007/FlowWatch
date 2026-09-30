@@ -1,6 +1,8 @@
 """FlowWatch NetOps Copilot: chat with an LLM that queries NetFlow data in Elasticsearch."""
 import json
 import os
+import re
+from urllib.parse import quote
 
 import altair as alt
 import pandas as pd
@@ -9,9 +11,13 @@ import streamlit as st
 from elasticsearch import Elasticsearch
 
 from agent import NetOpsAgent
-from tools import SITE_TZ, FlowTools
+from tools import SITE_TZ, FlowTools, host_kql
 
 GENERATOR_URL = os.getenv("GENERATOR_URL", "http://flow-generator:8000")
+# Browser-facing Kibana address (links are opened by the viewer, not the container).
+KIBANA_URL = os.getenv("KIBANA_PUBLIC_URL", "http://localhost:5601")
+KIBANA_DASHBOARD = "flowwatch-traffic-explorer"
+IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 # Categorical hues in fixed order (validated for CVD separation); never cycled.
 SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 SAMPLE_QUESTIONS = [
@@ -23,7 +29,7 @@ SAMPLE_QUESTIONS = [
     "Find the biggest traffic anomalies in the last 7 days and explain each one.",
 ]
 
-st.set_page_config(page_title="FlowWatch NetOps Copilot", page_icon="📡", layout="wide")
+st.set_page_config(page_title="FlowWatch", page_icon="📡", layout="wide")
 
 
 @st.cache_resource
@@ -69,6 +75,43 @@ def chart(spec: dict) -> None:
     st.altair_chart(alt.layer(*layers).properties(height=240), width="stretch")
 
 
+def rison(text: str) -> str:
+    return "'" + text.replace("!", "!!").replace("'", "!'") + "'"
+
+
+def kibana_url(kql: str, start: str, end: str) -> str:
+    g = f"(time:(from:{rison(start)},to:{rison(end)}))"
+    a = f"(query:(language:kuery,query:{rison(kql)}))"
+    safe = "(),:'!*"
+    return f"{KIBANA_URL}/app/dashboards#/view/{KIBANA_DASHBOARD}?_g={quote(g, safe=safe)}&_a={quote(a, safe=safe)}"
+
+
+def _host_window(ip: str, steps: list[dict]) -> tuple[str, str]:
+    """Narrowest tool window whose result mentions the host, padded for context."""
+    windows = (
+        [s["kibana"] for s in steps if s.get("kibana") and ip in json.dumps(s["result"])]
+        or [s["kibana"] for s in steps if s.get("kibana")]
+    )
+    w = min(windows, key=lambda k: pd.Timestamp(k["to"]) - pd.Timestamp(k["from"]))
+    start, end = pd.Timestamp(w["from"]), pd.Timestamp(w["to"])
+    pad = max((end - start) / 2, pd.Timedelta(hours=1))
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    return (start - pad).strftime(fmt), min(end + pad, pd.Timestamp.now(tz="UTC")).strftime(fmt)
+
+
+def render_kibana_links(answer: str, steps: list[dict]) -> None:
+    """Deep-link every host the answer mentions into the Kibana traffic explorer."""
+    if not any(s.get("kibana") for s in steps):
+        return
+    links = []
+    for ip in list(dict.fromkeys(IPV4.findall(answer)))[:6]:
+        start, end = _host_window(ip, steps)
+        links.append(f"[{ip}](<{kibana_url(host_kql(ip), start, end)}>)")
+    start, end = _host_window("", steps)
+    links.append(f"[all traffic](<{kibana_url('', start, end)}>)")
+    st.markdown("📈 **Graphs in Kibana:** " + " · ".join(links))
+
+
 def render_steps(steps: list[dict]) -> None:
     for spec in [c for s in steps for c in s.get("charts", [])][-2:]:
         chart(spec)
@@ -78,7 +121,11 @@ def render_steps(steps: list[dict]) -> None:
     with st.expander(f"🔎 {len(steps)} tool calls · {n_queries} Elasticsearch aggregation requests"):
         for i, step in enumerate(steps, 1):
             took = sum(q.get("took_ms") or 0 for q in step.get("queries", []))
-            st.markdown(f"**{i}. `{step['tool']}`** · {took} ms in Elasticsearch")
+            link = ""
+            if step.get("kibana"):
+                k = step["kibana"]
+                link = f" · [open this slice in Kibana](<{kibana_url(k['kql'], k['from'], k['to'])}>)"
+            st.markdown(f"**{i}. `{step['tool']}`** · {took} ms in Elasticsearch{link}")
             st.code(json.dumps(step["args"], indent=2), language="json")
             tabs = st.tabs(["Result sent to the LLM", "Elasticsearch request"])
             with tabs[0]:
@@ -137,11 +184,8 @@ def main() -> None:
     st.session_state.setdefault("messages", [])
     sidebar()
 
-    st.title("📡 FlowWatch NetOps Copilot")
-    st.caption(
-        "NetFlow v9 / IPFIX → collector → Elasticsearch time series data stream → "
-        f"LLM function calling over the Aggregations API · site time zone {SITE_TZ}"
-    )
+    st.title("📡 FlowWatch")
+    st.caption(f"Site time zone: {SITE_TZ}")
     if not os.getenv("GEMINI_API_KEY"):
         st.error("GEMINI_API_KEY is not set. Add it to .env and restart flowwatch-app.")
 
@@ -150,6 +194,8 @@ def main() -> None:
             if msg["role"] == "assistant":
                 render_steps(msg.get("steps", []))
             st.markdown(msg["content"])
+            if msg["role"] == "assistant":
+                render_kibana_links(msg["content"], msg.get("steps", []))
 
     question = st.chat_input("Ask about bandwidth, congestion, top talkers, trends…") or st.session_state.pop("pending", None)
     if not question:
@@ -175,6 +221,7 @@ def main() -> None:
         status.update(label=f"Done: {len(steps)} tool calls", state="complete", expanded=False)
         render_steps(steps)
         st.markdown(answer)
+        render_kibana_links(answer, steps)
     st.session_state.messages.append({"role": "assistant", "content": answer, "steps": steps})
 
 

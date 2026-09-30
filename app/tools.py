@@ -106,6 +106,34 @@ def ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def kql(filters: dict | None) -> str:
+    """KQL equivalent of a tool's filters (for Kibana deep links)."""
+    parts = []
+    for key, value in (filters or {}).items():
+        if value in (None, "", []):
+            continue
+        values = value if isinstance(value, list) else [value]
+        if key == "interface":
+            fields = ["interface.in.name", "interface.out.name"]
+        elif key == "any_ip":
+            fields = ["source.ip", "destination.ip"]
+        elif key in FILTER_FIELDS:
+            fields = [FILTER_FIELDS[key]]
+        else:
+            continue
+        terms = [f'{f}:{int(v) if key == "service_port" else json.dumps(str(v))}' for f in fields for v in values]
+        parts.append(terms[0] if len(terms) == 1 else "(" + " or ".join(terms) + ")")
+    return " and ".join(parts)
+
+
+def zulu(t: datetime) -> str:
+    return t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def host_kql(ip: str) -> str:
+    return f'source.ip:"{ip}" or destination.ip:"{ip}"'
+
+
 class FlowTools:
     def __init__(self, es: Elasticsearch):
         self.es = es
@@ -164,6 +192,8 @@ class FlowTools:
         return next((i for i in INTERVALS if i >= resolution and span / i <= max_points), INTERVALS[-1])
 
     def _query(self, s: datetime, e: datetime, filters: dict | None) -> dict:
+        # Remember window + filters as KQL so the UI can open the same slice in Kibana.
+        self._trace["kibana"] = {"from": zulu(s), "to": zulu(e), "kql": kql(filters)}
         clauses = [{"range": {"@timestamp": {"gte": s.isoformat(), "lt": e.isoformat()}}}]
         for key, value in (filters or {}).items():
             if value in (None, "", []):
@@ -429,6 +459,7 @@ class FlowTools:
             name: {"range": {"@timestamp": {"gte": a.isoformat(), "lt": b.isoformat()}}} for name, (a, b) in windows.items()
         }
         query = self._query(min(a for a, _ in windows.values()), e, filters)
+        self._trace["kibana"]["from"] = zulu(s)  # link to the window in question, not the baseline days
         aggs = {"windows": {"filters": {"filters": range_filters}, "aggs": {
             "bytes": {"sum": {"field": "network.bytes"}},
             "groups": self._group_agg(dimension, 50, {"bytes": {"sum": {"field": "network.bytes"}}}),
@@ -530,6 +561,7 @@ class FlowTools:
             "bytes": {"sum": {"field": "network.bytes"}}, "timeline": self._histogram(q_start, e, step),
         })}
         res = self._search({"query": self._query(q_start, e, filters), "aggs": aggs})["aggregations"]
+        self._trace["kibana"]["from"] = zulu(s)
         events = []
         day_ms = 86_400_000
         series = {self._key(g, dimension): dict(self._series(g["timeline"]["buckets"], q_start, e, step))
