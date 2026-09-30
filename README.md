@@ -4,6 +4,12 @@ A docker-compose demo in which an LLM answers network performance questions as t
 ("why was the ERP slow yesterday?", "is video traffic growing?"). It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
+![FlowWatch demo: the ERP slowdown traced to host 10.10.8.77, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
+
+*Demo 1: "Why was the ERP app slow yesterday afternoon?" → the MPLS link hit 97%, caused by
+`10.10.8.77`, with the host's graphs opened in Kibana. Demo 2: a live incident injected through
+the generator → "What is using the internet link right now?" (sped up; 28s).*
+
 ## Architecture
 
 **NetFlow v9 / IPFIX → collector → Elasticsearch time series data stream → LLM function calling over the Aggregations API**
