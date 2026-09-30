@@ -62,5 +62,22 @@ else {
 }
 
 Write-Host '---'
+
+$tsds = Get-JsonFromUrl -Url 'http://localhost:9200/metrics-netflow.flows-*/_search?size=0&filter_path=aggregations&source_content_type=application/json&source={"aggs":{"last":{"max":{"field":"@timestamp"}}}}'
+if ($tsds.StatusCode -eq 200) {
+    $last = ($tsds.Body | ConvertFrom-Json).aggregations.last.value_as_string
+    $age = [int]((Get-Date).ToUniversalTime() - [datetime]::Parse($last).ToUniversalTime()).TotalSeconds
+    if ($age -lt 180) {
+        Write-Host "FLOW TSDS: OK (newest bucket $last, ${age}s ago)" -ForegroundColor Green
+    }
+    else {
+        Write-Host "FLOW TSDS: STALE (newest bucket $last, ${age}s ago) - check flow-collector logs" -ForegroundColor Yellow
+    }
+}
+else {
+    Write-Host "FLOW TSDS: FAIL (HTTP $($tsds.StatusCode))" -ForegroundColor Red
+}
+
+Write-Host '---'
 Write-Host 'Docker services:' -ForegroundColor Cyan
 & 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' compose ps
