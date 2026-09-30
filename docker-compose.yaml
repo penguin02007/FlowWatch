@@ -1,3 +1,12 @@
+x-pipeline: &pipeline
+  build: ./pipeline
+  image: flowwatch/pipeline:latest
+  environment: &pipeline-env
+    ES_HOST: http://elasticsearch:9200
+    SITE_TZ: ${SITE_TZ:-UTC}
+  networks:
+    - netflow-net
+
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.17.6
@@ -5,8 +14,8 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
+      - cluster.routing.allocation.disk.threshold_enabled=false
       - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
-      - xpack.security.enabled=false
     ports:
       - "9200:9200"
     healthcheck:
@@ -20,80 +29,119 @@ services:
       - netflow-net
 
   kibana:
-      image: docker.elastic.co/kibana/kibana:8.17.6
-      container_name: kibana
-      ports:
-        - "0.0.0.0:5601:5601"
-      environment:
-        - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      depends_on:
-        - elasticsearch
-      networks:
-        - netflow-net
+    image: docker.elastic.co/kibana/kibana:8.17.6
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SECURITY_SHOWINSECURECLUSTERWARNING=false
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - netflow-net
 
+  # One-shot: Kibana data view + "FlowWatch traffic explorer" dashboard (the chat links into it).
+  kibana-setup:
+    <<: *pipeline
+    container_name: kibana-setup
+    command: ["python", "-m", "flowwatch.setup_kibana"]
+    environment:
+      KIBANA_HOST: http://kibana:5601
+    restart: "no"
+    depends_on:
+      - kibana
+
+  # One-shot: TSDS index template + data stream, inventory, and history backfill.
+  es-setup:
+    <<: *pipeline
+    container_name: es-setup
+    command: ["python", "-m", "flowwatch.setup_es"]
+    environment:
+      <<: *pipeline-env
+      BACKFILL_DAYS: ${BACKFILL_DAYS:-14}
+    restart: "no"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # NetFlow v9 / IPFIX collector -> 1-minute rollups in the TSDS.
   flow-collector:
-      image: elastiflow/flow-collector:7.26.3
-      container_name: flow-collector
-      restart: 'unless-stopped'
-      ports:
-        - "0.0.0.0:2055:2055/udp"
-      environment:
-        - EF_LICENSE_ACCEPTED=true
-        - EF_OUTPUT_ELASTICSEARCH_ENABLE=true
-        - EF_OUTPUT_ELASTICSEARCH_ADDRESSES=elasticsearch:9200
-        - EF_OUTPUT_ELASTICSEARCH_TLS_ENABLE=false
-        - EF_OUTPUT_ELASTICSEARCH_TLS_SKIP_VERIFICATION=false
-        - EF_OUTPUT_ELASTICSEARCH_INDEX_TEMPLATE_ENABLE=true
-        - EF_FLOW_SERVER_UDP_IP=0.0.0.0
-        - EF_FLOW_SERVER_UDP_PORT=2055,4739,6343,9995
-        - EF_LOGGER_ENCODING=json
-        - EF_API_IP=0.0.0.0
-        - EF_API_PORT=8080
-      depends_on:
-        - elasticsearch
-      networks:
-        - netflow-net
+    <<: *pipeline
+    container_name: flow-collector
+    command: ["python", "-m", "flowwatch.collector"]
+    restart: unless-stopped
+    ports:
+      - "2055:2055/udp"
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
 
-  nflow-generator:
-      build:
-        context: ./netflow-sender
-        dockerfile: Dockerfile
-      container_name: nflow-generator
-      restart: 'unless-stopped'
-      environment:
-        - FLOW_COLLECTOR_HOST=flow-collector
-        - FLOW_COLLECTOR_PORT=2055
-        - FLOW_COUNT=1
-        - SEND_INTERVAL=1.0
-      depends_on:
-        - flow-collector
-      networks:
-        - netflow-net
+  # Simulated exporters (edge-rtr-01 = NetFlow v9, dc-core-01 = IPFIX) + scenario control API.
+  flow-generator:
+    <<: *pipeline
+    container_name: flow-generator
+    command: ["python", "-m", "flowwatch.generator"]
+    restart: unless-stopped
+    environment:
+      <<: *pipeline-env
+      FLOW_TARGETS: ${FLOW_TARGETS:-flow-collector:2055}
+      EXPORT_INTERVAL: "5"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - flow-collector
 
-  udp-probe:
-      image: ubuntu:22.04
-      container_name: udp-probe
-      command: ["/bin/bash", "-lc", "apt-get update && apt-get install -y iproute2 tcpdump iputils-ping && tcpdump -i any udp port 2055 -nn -vv -U"]
-      depends_on:
-        - nflow-generator
-        - flow-collector
-      networks:
-        - netflow-net
-
-  flowwatch-backend:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    container_name: flowwatch-backend
+  flowwatch-app:
+    build: ./app
+    container_name: flowwatch-app
     ports:
       - "8501:8501"
     environment:
-      - ES_HOST=http://elasticsearch:9200
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      ES_HOST: http://elasticsearch:9200
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      SITE_TZ: ${SITE_TZ:-UTC}
+      GENERATOR_URL: http://flow-generator:8000
+      KIBANA_PUBLIC_URL: ${KIBANA_PUBLIC_URL:-http://localhost:5601}
     depends_on:
-      - elasticsearch
+      es-setup:
+        condition: service_completed_successfully
     networks:
       - netflow-net
+
+  # Optional: ElastiFlow as a second collector for its Kibana dashboards.
+  #   FLOW_TARGETS=flow-collector:2055,elastiflow:2055 docker compose --profile elastiflow up -d
+  elastiflow:
+    image: elastiflow/flow-collector:7.26.3
+    container_name: elastiflow
+    profiles: ["elastiflow"]
+    restart: unless-stopped
+    environment:
+      - EF_LICENSE_ACCEPTED=true
+      - EF_OUTPUT_ELASTICSEARCH_ENABLE=true
+      - EF_OUTPUT_ELASTICSEARCH_ADDRESSES=elasticsearch:9200
+      - EF_OUTPUT_ELASTICSEARCH_TLS_ENABLE=false
+      - EF_OUTPUT_ELASTICSEARCH_INDEX_TEMPLATE_ENABLE=true
+      - EF_FLOW_SERVER_UDP_IP=0.0.0.0
+      - EF_FLOW_SERVER_UDP_PORT=2055,4739,6343,9995
+      - EF_LOGGER_ENCODING=json
+      - EF_API_IP=0.0.0.0
+      - EF_API_PORT=8080
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - netflow-net
+
+  # Optional: watch export packets on the wire (docker compose --profile debug up udp-probe).
+  udp-probe:
+    image: ubuntu:22.04
+    container_name: udp-probe
+    profiles: ["debug"]
+    command: ["/bin/bash", "-lc", "apt-get update && apt-get install -y tcpdump && tcpdump -i any udp port 2055 -nn -v -U"]
+    network_mode: "service:flow-collector"
 
 volumes:
   es_data:
