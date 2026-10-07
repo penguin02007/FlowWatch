@@ -1,20 +1,15 @@
 # FlowWatch: LLM + Elasticsearch + NetFlow
 
-A docker-compose demo in which an LLM answers network performance questions as they come up. It works out the answers by
+A docker-compose stack which an LLM answers network performance questions as they come up. It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
 ![FlowWatch demo: the ERP slowdown traced to host 10.10.8.77, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
 
-*In the first demo, the question "Why was the ERP app slow yesterday afternoon?" leads the LLM
-to find that the MPLS link hit 97% because of host `10.10.8.77`, and the host's graphs then open
-in Kibana. In the second demo, a live incident is injected through the generator and the LLM is
-asked "What is using the internet link right now?" The recording is sped up to 28 seconds.*
-
-## Architecture
+## Stack
 
 Routers export NetFlow v9 and IPFIX to a collector, which stores one-minute rollups in an
-Elasticsearch time series data stream. An LLM then answers questions by calling tools, and each
-tool queries that data through the Elasticsearch Aggregations API.
+Elasticsearch time series data stream (TSDS). An LLM then answers questions by calling functional calls, and each
+call queries that data through the Elasticsearch Aggregations API.
 
 ```text
 ┌──────────────────────┐   NetFlow v9 / IPFIX   ┌──────────────────────┐
@@ -44,7 +39,7 @@ tool queries that data through the Elasticsearch Aggregations API.
 | `flow-generator` | Simulates `edge-rtr-01` (**NetFlow v9**) and `dc-core-01` (**IPFIX**) exporting real UDP packets every 5s. Traffic follows business hours, weekends, a nightly backup and link capacity limits. HTTP API on `:8000` injects incidents. |
 | `flow-collector` | Template-aware v9/IPFIX decoder. Adds site, application and interface names to each flow, rolls flows up per minute per dimension set, and writes to the TSDS. |
 | `es-setup` | Creates TSDS index template, the `flowwatch-inventory` index (interfaces, capacities, applications), and **14 days of backfilled history**. Re-runs are idempotent. |
-| `flowwatch-app` | Streamlit chat on [localhost:8501](http://localhost:8501). Gemini picks tools, and each tool runs Elasticsearch aggregations. Every request body is shown in the UI. |
+| `flowwatch-app` | Streamlit chat on [localhost:8501](http://localhost:8501). Gemini picks functional calls, and each call runs Elasticsearch aggregations. Every request body is shown in the UI. |
 | `kibana` | [localhost:5601](http://localhost:5601), for exploring `metrics-netflow.flows-*` directly. |
 | `kibana-setup` | Creates the `FlowWatch flows (TSDS)` data view and the **FlowWatch traffic explorer** dashboard (throughput by application, conversation and egress interface, plus a top-conversations table). |
 
@@ -58,7 +53,7 @@ same filters. If Kibana isn't reachable at `http://localhost:5601` from the brow
 ## Quick start
 
 ```powershell
-copy .env.example .env      # then set GEMINI_API_KEY
+copy .env.example .env      # set GEMINI_API_KEY
 docker compose up -d --build
 docker compose logs -f es-setup   # backfill takes ~30s, then the collector starts
 ```
@@ -111,7 +106,7 @@ guide; see `pipeline/flowwatch/setup_es.py`.
 
 ## LLM
 
-LLM uses "tool" and the model can ask the app to run. FlowWatch describes each tool to
+LLM uses "functional call" and the model can ask the app to run. FlowWatch describes each functional call to
 Gemini by name, purpose and a JSON schema of its parameters (time window, group-by dimension,
 filters). When a question comes in, Gemini doesn't read raw data, and apart from the
 `run_aggregation` escape hatch it doesn't write queries itself. Instead it replies with
@@ -187,3 +182,7 @@ docker compose down -v                          # wipe everything, including his
 ```powershell
 $env:FLOW_TARGETS="flow-collector:2055,elastiflow:2055"; docker compose --profile elastiflow up -d
 ```
+
+## Reference
+
+1. What is [functional call](https://medium.com/@jamestang/llm-function-calling-explained-a-deep-dive-into-the-request-and-response-payloads-894800fcad75)?
