@@ -1,10 +1,7 @@
 # FlowWatch: LLM + Elasticsearch + NetFlow
 
-A docker-compose demo in which an LLM answers network performance questions as they come up
-("why was the ERP slow yesterday?", "is video traffic growing?"). It works out the answers by
+A docker-compose demo in which an LLM answers network performance questions as they come up. It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
-
-
 
 ![FlowWatch demo: the ERP slowdown traced to host 10.10.8.77, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
 
@@ -67,6 +64,36 @@ docker compose logs -f es-setup   # backfill takes ~30s, then the collector star
 ```
 
 Open http://localhost:8501 and click a sample question.
+
+## Dev container
+
+The repo includes a VS Code dev container that attaches to the `flowwatch-app` service. Your
+working copy is mounted at `/workspace`, and Streamlit reloads when you save a file.
+
+1. **Install Docker and Docker Compose v2.** The easiest option is
+   [Docker Desktop](https://www.docker.com/products/docker-desktop/), which includes both. If
+   you use Homebrew's `docker` instead, run `brew install docker-compose`, then add this to
+   `~/.docker/config.json` so `docker compose` works:
+
+   ```json
+   "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]
+   ```
+
+   Install the **Dev Containers** extension (`ms-vscode-remote.remote-containers`). VS Code
+   suggests it when you open the repo.
+
+2. **Set `GEMINI_API_KEY`.** Copy `.env.example` to `.env` in the repo root and fill in the key.
+
+3. **Validate the config and open the container.** Check that the compose files merge cleanly:
+
+   ```sh
+   docker compose -f docker-compose.yaml -f .devcontainer/docker-compose.devcontainer.yml config
+   ```
+
+   Then run **Dev Containers: Reopen in Container** from the Command Palette. The first start
+   builds the images and waits for Elasticsearch and `es-setup`, so it takes a few minutes.
+   Inside the container, run the pipeline tests from the Testing panel or with
+   `cd pipeline && python -m unittest discover -s tests`.
 
 ## Data model (TSDS)
 

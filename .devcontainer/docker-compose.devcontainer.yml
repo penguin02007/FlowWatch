@@ -1,0 +1,16 @@
+# Dev-only overrides layered on ../docker-compose.yaml by devcontainer.json.
+# Paths resolve relative to the repo root (the first compose file's directory).
+services:
+  flowwatch-app:
+    volumes:
+      - .:/workspace:cached
+    working_dir: /workspace/app
+    # Run Streamlit from the mounted source with reload-on-save, and keep the
+    # container alive even if the app crashes so VS Code stays attached.
+    command:
+      - bash
+      - -c
+      - >-
+        python -m streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+        --server.runOnSave=true --browser.gatherUsageStats=false &
+        sleep infinity
