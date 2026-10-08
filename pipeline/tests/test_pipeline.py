@@ -49,7 +49,7 @@ class ModelTest(unittest.TestCase):
 
     def test_history_incidents(self):
         anchor = anchor_for(datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc))
-        t = anchor - timedelta(days=1) + timedelta(hours=13, minutes=30)
+        t = anchor + timedelta(hours=8, minutes=15)
         self.assertIn(("smb-bulk-copy", 1.0), history_scenarios(t, anchor))
 
     def test_rollup_merges_identical_dimensions(self):

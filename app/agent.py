@@ -9,13 +9,13 @@ from typing import Callable
 from google import genai
 from google.genai import errors, types
 
-from tools import SITE_TZ, TOOL_DECLARATIONS, FlowTools
+from functions import FUNCTION_DECLARATIONS, SITE_TZ, FlowFunctions
 
-MAX_TOOL_ROUNDS = 10
+MAX_FUNCTION_CALL_ROUNDS = 10
 
 SYSTEM_PROMPT = """You are FlowWatch, a senior network operations analyst. You answer questions about
 network performance and bandwidth using NetFlow v9 / IPFIX telemetry that is rolled up into an
-Elasticsearch time series data stream. You can only see the data through the provided tools, each of
+Elasticsearch time series data stream. You can only see the data through the provided functions, each of
 which runs Elasticsearch aggregations.
 
 Current time: {now_local} ({tz}); UTC {now_utc}. Interpret relative dates ("yesterday afternoon",
@@ -23,12 +23,12 @@ Current time: {now_local} ({tz}); UTC {now_utc}. Interpret relative dates ("yest
 
 How to work:
 - Call get_network_inventory when you need interface names, capacities or application names. Never invent names.
-- Ground every claim in tool results and quote concrete numbers: Mbps, % of link capacity, GB, times.
+- Ground every claim in function results and quote concrete numbers: Mbps, % of link capacity, GB, times.
 - Before calling something abnormal, compare it with a baseline (compare_to_baseline or detect_anomalies):
   traffic has strong time-of-day and weekday/weekend patterns.
 - Correlate. When a link is congested, find which conversations, hosts and applications drove it
   (top_talkers filtered to that interface and window) and what else on the same link was squeezed.
-- Prefer several focused tool calls to guessing. Use run_aggregation only when no other tool fits.
+- Prefer several focused function calls to guessing. Use run_aggregation only when no other function fits.
 - Direction: on an interface, "inbound" is received from that link and "outbound" is sent into it.
   For the internet uplink, inbound means downloads and outbound means uploads.
 
@@ -47,18 +47,18 @@ def system_prompt() -> str:
 
 
 class NetOpsAgent:
-    def __init__(self, tools: FlowTools, model: str | None = None):
-        self.tools = tools
+    def __init__(self, functions: FlowFunctions, model: str | None = None):
+        self.functions = functions
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
         self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        self.tool = types.Tool(function_declarations=[types.FunctionDeclaration(**d) for d in TOOL_DECLARATIONS])
+        self.function_tool = types.Tool(function_declarations=[types.FunctionDeclaration(**d) for d in FUNCTION_DECLARATIONS])
 
-    def _config(self, allow_tools: bool = True) -> types.GenerateContentConfig:
+    def _config(self, allow_function_calls: bool = True) -> types.GenerateContentConfig:
         return types.GenerateContentConfig(
             system_instruction=system_prompt(),
-            tools=[self.tool],
+            tools=[self.function_tool],
             tool_config=types.ToolConfig(function_calling_config=types.FunctionCallingConfig(
-                mode="AUTO" if allow_tools else "NONE")),
+                mode="AUTO" if allow_function_calls else "NONE")),
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
             temperature=0.2,
         )
@@ -85,8 +85,8 @@ class NetOpsAgent:
         """Answer ``question``; ``history`` is updated in place so follow-ups keep context."""
         history.append(types.Content(role="user", parts=[types.Part.from_text(text=question)]))
         steps: list[dict] = []
-        for round_no in range(MAX_TOOL_ROUNDS + 1):
-            response = self._generate(history, self._config(round_no < MAX_TOOL_ROUNDS))
+        for round_no in range(MAX_FUNCTION_CALL_ROUNDS + 1):
+            response = self._generate(history, self._config(round_no < MAX_FUNCTION_CALL_ROUNDS))
             candidate = response.candidates[0] if response.candidates else None
             if candidate is None or candidate.content is None:
                 reason = candidate.finish_reason if candidate else "no candidates"
@@ -100,12 +100,12 @@ class NetOpsAgent:
             replies = []
             for call in calls:
                 args = dict(call.args or {})
-                result, trace = self.tools.call(call.name, args)
-                step = {"tool": call.name, "args": args, "result": result, **trace}
+                result, trace = self.functions.call(call.name, args)
+                step = {"function": call.name, "args": args, "result": result, **trace}
                 steps.append(step)
                 if on_step:
                     on_step(step)
                 replies.append(types.Part(function_response=types.FunctionResponse(
                     id=call.id, name=call.name, response={"result": result})))
             history.append(types.Content(role="user", parts=replies))
-        return "Stopped: too many tool rounds.", steps
+        return "Stopped: too many function-call rounds.", steps

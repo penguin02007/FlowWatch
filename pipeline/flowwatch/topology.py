@@ -93,6 +93,9 @@ APPLICATIONS: tuple[AppRule, ...] = (
     AppRule("erp-database", "tcp", (1433,), (), "ERP SQL Server in DC (10.30.1.10)"),
     AppRule("erp-web", "tcp", (8443,), (), "ERP web tier in DC (10.30.1.20)"),
     AppRule("file-share-smb", "tcp", (445,), (), "Windows file server in DC (10.30.2.10)"),
+    AppRule("gpu-checkpoint-nfs", "tcp", (2049,), (),
+            "NFS on the DC storage array (10.30.3.10). The HQ GPU training cluster (10.10.9.11-14) writes "
+            "model checkpoints there around the clock; training stalls when those writes slow down"),
     AppRule("directory-ldap", "tcp", (389, 636), (), "Active Directory"),
     AppRule("backup-rsync", "tcp", (873,), (), "Nightly rsync backup DC->DR, change calendar: 01:00-03:00 site time"),
     AppRule("sql-replication", "tcp", (5022,), (), "SQL AlwaysOn replication DC->DR (RPO depends on it)"),
@@ -188,6 +191,11 @@ BASELINE: tuple[Conversation, ...] = (
     _hq_dc("10.10.2.40", "10.30.2.10", 445, 30, 12),
     _hq_dc("10.10.1.24", "10.30.2.10", 445, 30, 12),
     _hq_dc("10.10.0.53", "10.30.0.5", 389, 1.5, 1, profile="flat"),
+    # HQ GPU training cluster -> DC NFS checkpoints, 24x7
+    _hq_dc("10.10.9.11", "10.30.3.10", 2049, 4, 35, profile="flat"),
+    _hq_dc("10.10.9.12", "10.30.3.10", 2049, 4, 35, profile="flat"),
+    _hq_dc("10.10.9.13", "10.30.3.10", 2049, 4, 35, profile="flat"),
+    _hq_dc("10.10.9.14", "10.30.3.10", 2049, 4, 35, profile="flat"),
     # DC -> DR over DCI (dc-core-01 Eth1/1, 1 Gbps)
     _dc_dr("10.30.5.20", "10.40.5.20", 873, 5, 850, profile="nightly"),
     _dc_dr("10.30.1.10", "10.40.1.10", 5022, 3, 45),
@@ -247,7 +255,8 @@ class Incident:
 
 
 HISTORY_INCIDENTS: tuple[Incident, ...] = (
-    Incident("smb-bulk-copy", days_ago=1, hour=13, minute=5, duration_min=90),
+    # This morning: the bulk copy saturates MPLS and starves the GPU cluster's checkpoint writes.
+    Incident("smb-bulk-copy", days_ago=0, hour=7, minute=40, duration_min=80),
     Incident("backup-overrun", days_ago=3, hour=3, minute=0, duration_min=390),
     Incident("update-storm", days_ago=5, hour=16, minute=0, duration_min=70),
     Incident("data-exfiltration", days_ago=8, hour=10, minute=40, duration_min=25, scale=0.4),

@@ -1,6 +1,6 @@
-"""Elasticsearch aggregation tools exposed to the LLM through function calling.
+"""Elasticsearch aggregation functions exposed to the LLM through function calling.
 
-Every tool builds an aggregation request against the NetFlow TSDS, runs it,
+Every function builds an aggregation request against the NetFlow TSDS, runs it,
 and post-processes the buckets into a compact JSON result for the model. The
 exact request bodies are recorded in a trace so the UI can show them.
 """
@@ -38,7 +38,7 @@ FILTER_FIELDS = {k: v for k, v in DIMENSIONS.items() if v}
 INTERVALS = [60, 300, 900, 1800, 3600, 10800, 21600, 43200, 86400]
 
 
-class ToolError(Exception):
+class FunctionCallError(Exception):
     pass
 
 
@@ -65,7 +65,7 @@ def parse_time(value, now: datetime) -> datetime:
     try:
         t = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as err:
-        raise ToolError(f"cannot parse time '{value}': use ISO-8601 or 'now-6h' style") from err
+        raise FunctionCallError(f"cannot parse time '{value}': use ISO-8601 or 'now-6h' style") from err
     if t.tzinfo is None:
         t = t.replace(tzinfo=SITE_TZ)
     return t.astimezone(timezone.utc)
@@ -74,7 +74,7 @@ def parse_time(value, now: datetime) -> datetime:
 def parse_interval(value: str) -> int:
     m = re.fullmatch(r"\s*(\d+)\s*([smhd])\s*", str(value).lower())
     if not m:
-        raise ToolError(f"bad interval '{value}', use e.g. 5m, 1h, 1d")
+        raise FunctionCallError(f"bad interval '{value}', use e.g. 5m, 1h, 1d")
     return int(m.group(1)) * {"s": 1, "m": 60, "h": 3600, "d": 86400}[m.group(2)]
 
 
@@ -107,7 +107,7 @@ def ms(dt: datetime) -> int:
 
 
 def kql(filters: dict | None) -> str:
-    """KQL equivalent of a tool's filters (for Kibana deep links)."""
+    """KQL equivalent of a function call's filters (for Kibana deep links)."""
     parts = []
     for key, value in (filters or {}).items():
         if value in (None, "", []):
@@ -134,7 +134,7 @@ def host_kql(ip: str) -> str:
     return f'source.ip:"{ip}" or destination.ip:"{ip}"'
 
 
-class FlowTools:
+class FlowFunctions:
     def __init__(self, es: Elasticsearch):
         self.es = es
         self._inventory: list[dict] | None = None
@@ -143,14 +143,14 @@ class FlowTools:
     # ---------------------------------------------------------- plumbing
 
     def call(self, name: str, args: dict) -> tuple[dict, dict]:
-        """Run tool ``name``; returns (result for the model, trace for the UI)."""
+        """Run function ``name``; returns (result for the model, trace for the UI)."""
         self._trace = {"queries": [], "charts": []}
-        fn = getattr(self, f"tool_{name}", None)
+        fn = getattr(self, f"fn_{name}", None)
         try:
             if fn is None:
-                raise ToolError(f"unknown tool {name}")
+                raise FunctionCallError(f"unknown function {name}")
             result = fn(**args)
-        except ToolError as err:
+        except FunctionCallError as err:
             result = {"error": str(err)}
         except ApiError as err:
             result = {"error": f"Elasticsearch rejected the request: {err.message} {json.dumps(err.body)[:800]}"}
@@ -181,7 +181,7 @@ class FlowTools:
         s = parse_time(start, now)
         e = min(parse_time(end or "now", now), data_end)
         if e <= s:
-            raise ToolError(f"empty time window {local(s)} -> {local(e)} (data is complete up to {local(data_end)})")
+            raise FunctionCallError(f"empty time window {local(s)} -> {local(e)} (data is complete up to {local(data_end)})")
         return s, e
 
     def _interval(self, s: datetime, e: datetime, requested=None, max_points: int = 60) -> int:
@@ -207,13 +207,13 @@ class FlowTools:
             elif key in FILTER_FIELDS:
                 clauses.append({"terms": {FILTER_FIELDS[key]: values}})
             else:
-                raise ToolError(f"unknown filter '{key}', valid: {sorted([*FILTER_FIELDS, 'interface', 'any_ip'])}")
+                raise FunctionCallError(f"unknown filter '{key}', valid: {sorted([*FILTER_FIELDS, 'interface', 'any_ip'])}")
         return {"bool": {"filter": clauses}}
 
     @staticmethod
     def _group_agg(dimension: str, size: int, sub: dict) -> dict:
         if dimension not in DIMENSIONS:
-            raise ToolError(f"unknown dimension '{dimension}', valid: {list(DIMENSIONS)}")
+            raise FunctionCallError(f"unknown dimension '{dimension}', valid: {list(DIMENSIONS)}")
         order = {"bytes": "desc"}
         if dimension == "conversation":
             terms = [{"field": "source.ip"}, {"field": "destination.ip"}, {"field": "service.port"}]
@@ -262,9 +262,9 @@ class FlowTools:
         values = [v for _, v in series]
         return {"avg_mbps": round(statistics.fmean(values), 1), "peak_mbps": peak, "peak_at": local(peak_t)}
 
-    # ---------------------------------------------------------- tools
+    # ---------------------------------------------------------- functions
 
-    def tool_get_network_inventory(self) -> dict:
+    def fn_get_network_inventory(self) -> dict:
         inv = self.inventory()
         res = self._search({"aggs": {"first": {"min": {"field": "@timestamp"}}, "last": {"max": {"field": "@timestamp"}}}})
         aggs = res["aggregations"]
@@ -289,7 +289,7 @@ class FlowTools:
             "notes": meta.get("notes", ""),
         }
 
-    def tool_bandwidth_timeseries(self, start="now-24h", end="now", interval=None, group_by=None,
+    def fn_bandwidth_timeseries(self, start="now-24h", end="now", interval=None, group_by=None,
                                   top_n=5, filters=None) -> dict:
         s, e = self._window(start, end)
         step = self._interval(s, e, interval)
@@ -326,7 +326,7 @@ class FlowTools:
         self._chart(f"Bandwidth by {group_by}", chart)
         return out
 
-    def tool_top_talkers(self, start="now-1h", end="now", dimension="conversation", size=10, filters=None) -> dict:
+    def fn_top_talkers(self, start="now-1h", end="now", dimension="conversation", size=10, filters=None) -> dict:
         s, e = self._window(start, end)
         step = self._interval(s, e, None, max_points=120)
         size = min(int(size or 10), 25)
@@ -362,14 +362,14 @@ class FlowTools:
             "peak_resolution": fmt_interval(step), "rows": rows,
         }
 
-    def tool_interface_utilization(self, start="now-24h", end="now", exporter=None, interface=None,
+    def fn_interface_utilization(self, start="now-24h", end="now", exporter=None, interface=None,
                                    interval=None, threshold_pct=80) -> dict:
         s, e = self._window(start, end)
         step = self._interval(s, e, interval, max_points=96)
         ifaces = [d for d in self.inventory() if d["kind"] == "interface"
                   and (not exporter or d["exporter"] == exporter) and (not interface or d["name"] == interface)]
         if not ifaces:
-            raise ToolError("no matching interface; call get_network_inventory for valid names")
+            raise FunctionCallError("no matching interface; call get_network_inventory for valid names")
         per_dir = {
             "bytes": {"sum": {"field": "network.bytes"}},
             "timeline": self._histogram(s, e, step),
@@ -436,7 +436,7 @@ class FlowTools:
             "peak_util_pct": round(100 * p["peak"] / cap, 1),
         } for p in periods][:10]
 
-    def tool_compare_to_baseline(self, start="now-1h", end="now", dimension="application",
+    def fn_compare_to_baseline(self, start="now-1h", end="now", dimension="application",
                                  baseline="same_time_previous_days", days=5, size=10, filters=None) -> dict:
         s, e = self._window(start, end)
         days = max(1, min(int(days or 5), 13))
@@ -454,7 +454,7 @@ class FlowTools:
                     windows[f"d-{k}"] = (d, e - timedelta(days=k))
                 k += 1
         else:
-            raise ToolError("baseline must be same_time_previous_days, same_time_last_week or previous_period")
+            raise FunctionCallError("baseline must be same_time_previous_days, same_time_last_week or previous_period")
         range_filters = {
             name: {"range": {"@timestamp": {"gte": a.isoformat(), "lt": b.isoformat()}}} for name, (a, b) in windows.items()
         }
@@ -491,7 +491,7 @@ class FlowTools:
             "total": summarize(totals), "dimension": dimension, "rows": rows[: min(int(size or 10), 25)],
         }
 
-    def tool_traffic_trend(self, days=14, dimension=None, size=6, filters=None) -> dict:
+    def fn_traffic_trend(self, days=14, dimension=None, size=6, filters=None) -> dict:
         days = max(2, min(int(days or 14), 20))
         now = datetime.now(timezone.utc)
         s = parse_time(f"now-{days - 1}d/d", now)
@@ -547,7 +547,7 @@ class FlowTools:
         return {"columns": ["day", "avg_mbps", "peak_hour_mbps"], "days": days,
                 "note": "last day is partial; weekend days are naturally low", "groups": out}
 
-    def tool_detect_anomalies(self, start="now-24h", end="now", dimension="application", interval="15m",
+    def fn_detect_anomalies(self, start="now-24h", end="now", dimension="application", interval="15m",
                               baseline_days=7, min_delta_mbps=25, filters=None) -> dict:
         s, e = self._window(start, end)
         baseline_days = max(1, min(int(baseline_days or 7), 13))
@@ -555,7 +555,7 @@ class FlowTools:
         while ((e - s).total_seconds() + baseline_days * 86400) / step * 25 > 50_000:
             step = next(i for i in INTERVALS if i > step)
         if 86400 % step:
-            raise ToolError("interval must divide a day evenly (e.g. 5m, 15m, 30m, 1h)")
+            raise FunctionCallError("interval must divide a day evenly (e.g. 5m, 15m, 30m, 1h)")
         q_start = s - timedelta(days=baseline_days)
         aggs = {"groups": self._group_agg(dimension, 25, {
             "bytes": {"sum": {"field": "network.bytes"}}, "timeline": self._histogram(q_start, e, step),
@@ -610,16 +610,16 @@ class FlowTools:
             } for ev in events[:15]],
         }
 
-    def tool_run_aggregation(self, aggregations: str, start="now-24h", end="now", filters=None) -> dict:
+    def fn_run_aggregation(self, aggregations: str, start="now-24h", end="now", filters=None) -> dict:
         s, e = self._window(start, end)
         try:
             aggs = json.loads(aggregations) if isinstance(aggregations, str) else aggregations
         except json.JSONDecodeError as err:
-            raise ToolError(f"aggregations is not valid JSON: {err}") from err
+            raise FunctionCallError(f"aggregations is not valid JSON: {err}") from err
         if not isinstance(aggs, dict) or not aggs:
-            raise ToolError("aggregations must be a JSON object of named aggregations")
+            raise FunctionCallError("aggregations must be a JSON object of named aggregations")
         if "scripted_metric" in json.dumps(aggs) or '"script"' in json.dumps(aggs):
-            raise ToolError("scripts are not allowed")
+            raise FunctionCallError("scripts are not allowed")
         res = self._search({"query": self._query(s, e, filters), "aggs": aggs})
         text = json.dumps(res.get("aggregations", {}), separators=(",", ":"))
         return {
@@ -677,7 +677,7 @@ def _fn(name, description, properties=None, required=None):
     return {"name": name, "description": description, "parameters": params}
 
 
-TOOL_DECLARATIONS = [
+FUNCTION_DECLARATIONS = [
     _fn("get_network_inventory",
         "Exporters, interfaces (with capacity), sites, applications, valid group-by dimensions and the time range of available data. Call first when you need names."),
     _fn("bandwidth_timeseries",

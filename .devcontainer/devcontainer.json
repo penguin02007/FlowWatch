@@ -1,13 +1,26 @@
 {
-  "name": "Dev Environment",
-  "dockerComposeFile": ["../docker-compose.yaml"],
-  "service": "app",
+  "name": "FlowWatch Dev Environment",
+  "dockerComposeFile": ["../docker-compose.yaml", "docker-compose.devcontainer.yml"],
+  "service": "flowwatch-app",
   "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
   "customizations": {
     "vscode": {
       "extensions": [
-        "dbaeumer.vscode-eslint"
-      ]
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.analysis.extraPaths": ["app", "pipeline"],
+        "python.testing.unittestEnabled": true,
+        "python.testing.cwd": "${workspaceFolder}/pipeline",
+        "python.testing.unittestArgs": ["-v", "-s", "tests", "-p", "test_*.py"]
+      }
     }
   }
 }
