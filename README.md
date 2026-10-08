@@ -1,6 +1,6 @@
 # FlowWatch: LLM + Elasticsearch + NetFlow
 
-This is a demo created for my talk in 2026 ElasticOn to show how Netflow, Large Language Models (LLMs) works with Elasticsearch.
+This is a demo created for my [talk](https://penguin02007.github.io/2026-elasticon-network-telemetry-genai) in 2026 ElasticOn to show how Netflow, Large Language Models (LLMs) works with Elasticsearch.
 
 A docker-compose stack which an LLM answers network performance questions as they come up. It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
