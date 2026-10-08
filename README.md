@@ -46,11 +46,11 @@ Install one of the following:
   ```
 
 > [!WARNING]
-> This overwrites any existing `~/.docker/config.json`. If you already have one, add
-  `cliPluginsExtraDirs` line to it instead.
+> This overwrites any existing `~/.docker/config.json`. If you already have one, add the
+> `cliPluginsExtraDirs` line to it instead.
 >
 > On Intel Macs, use `/usr/local/lib/docker/cli-plugins`.
-  After a reboot, run `colima start` again.
+> After a reboot, run `colima start` again.
 
  > [!NOTE]
  > Check that `docker compose version` prints v2 or later.
@@ -183,7 +183,7 @@ docker compose run --rm flow-collector python -m unittest discover -s tests   # 
 docker compose down -v                          # wipe everything, including history
 ```
 
-**Optional ElastiFlow:** Also feed ElastiFlow (for its Kibana dashboards in `kibana/`), run:
+**Optional ElastiFlow:** To also feed ElastiFlow (for its Kibana dashboards in `kibana/`), run:
 
 ```sh
 FLOW_TARGETS=flow-collector:2055,elastiflow:2055 docker compose --profile elastiflow up -d
@@ -223,11 +223,11 @@ call queries that data through the Elasticsearch Aggregations API.
 | `flow-generator` | Simulates `edge-rtr-01` (**NetFlow v9**) and `dc-core-01` (**IPFIX**) exporting real UDP packets every 5s. Traffic follows business hours, weekends, a nightly backup and link capacity limits. HTTP API on `:8000` injects incidents. |
 | `flow-collector` | Template-aware v9/IPFIX decoder. Adds site, application and interface names to each flow, rolls flows up per minute per dimension set, and writes to the TSDS. |
 | `es-setup` | Creates TSDS index template, the `flowwatch-inventory` index (interfaces, capacities, applications), and **14 days of backfilled history**. Re-runs are idempotent. |
-| `flowwatch-app` | Streamlit chat on [localhost:8501](http://localhost:8501). Gemini picks functional calls, and each call runs Elasticsearch aggregations. Every request body is shown in the UI. |
+| `flowwatch-app` | Streamlit chat on [localhost:8501](http://localhost:8501). Gemini picks function calls, and each call runs Elasticsearch aggregations. Every request body is shown in the UI. |
 | `kibana` | [localhost:5601](http://localhost:5601), for exploring `metrics-netflow.flows-*` directly. |
 | `kibana-setup` | Creates the `FlowWatch flows (TSDS)` data view and the **FlowWatch traffic explorer** dashboard (throughput by application, conversation and egress interface, plus a top-conversations table). |
 
-**Kibana Dashboard:** Under each answer, the app links every host IP mentions to
+**Kibana Dashboard:** Under each answer, the app links every host IP it mentions to
 the traffic explorer dashboard. The link carries a KQL query (`source.ip:"10.10.8.77" or
 destination.ip:"10.10.8.77"`) and the time window of the function call that found the host. Each
 function call in the evidence panel also has an *open this slice in Kibana* link that applies the
@@ -236,7 +236,6 @@ same filters.
 
 ### Data Model
 
-Time series data stream uses Elasticsearch indices as the data model.
 `metrics-netflow.flows-default` is a time series data stream. Each document is one bucket
 (1 minute live, 5 minutes for older backfill) for one set of dimensions.
 
@@ -251,7 +250,7 @@ guide; see `pipeline/flowwatch/setup_es.py`.
 
 ### LLM
 
-LLM uses "functional call" and the model can ask the app to run. FlowWatch describes each functional call to
+The LLM uses *function calls*: functions the model can ask the app to run. FlowWatch describes each function to
 Gemini by name, purpose and a JSON schema of its parameters (time window, group-by dimension,
 filters). When a question comes in, Gemini doesn't read raw data, and apart from the
 `run_aggregation` escape hatch it doesn't write queries itself. Instead it replies with
@@ -304,4 +303,4 @@ Scenarios: `smb-bulk-copy`, `backup-overrun`, `update-storm`, `data-exfiltration
 
 ## Reference
 
-1. What is [functional call](https://medium.com/@jamestang/llm-function-calling-explained-a-deep-dive-into-the-request-and-response-payloads-894800fcad75)?
+1. What is [function calling](https://medium.com/@jamestang/llm-function-calling-explained-a-deep-dive-into-the-request-and-response-payloads-894800fcad75)?
