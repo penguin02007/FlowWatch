@@ -3,7 +3,7 @@
 A docker-compose stack which an LLM answers network performance questions as they come up. It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
-![FlowWatch demo: the ERP slowdown traced to host 10.10.8.77, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
+![FlowWatch demo: a slow GPU cluster traced to host 10.10.8.77 saturating the MPLS link, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
 
 ## Stack
 
@@ -152,11 +152,12 @@ UI shows each function call, the exact request body and the result the model saw
 
 ## Demo script
 
-The backfilled history contains these planted events, relative to the day `es-setup` first ran:
+The backfilled history contains these planted events, relative to the day `es-setup` first ran, in
+the site time zone (`SITE_TZ`):
 
 | When | What happened | Question to ask |
 |---|---|---|
-| Yesterday 13:05–14:35 | `10.10.8.77` SMB bulk copy saturates the 500 Mbps MPLS link (97%) | "Users said the ERP app was slow yesterday afternoon. Was there a network cause?" |
+| Today 07:40–09:00 | `10.10.8.77` SMB bulk copy saturates the 500 Mbps MPLS link (97%) and starves the GPU cluster's checkpoint writes (`10.10.9.11–14` → `10.30.3.10` NFS) | "Why is the GPU cluster so slow this morning?" |
 | 3 days ago 03:00–09:30 | rsync backup overran its 01:00–03:00 window on the DCI link | "Did the nightly backup behave differently in the last week?" |
 | 5 days ago 16:00–17:10 | Windows update storm, about 780 Mbps on the internet uplink | "Find the biggest anomalies in the last 7 days." |
 | 8 days ago 10:40 | `10.10.3.45` uploads to `185.220.101.7` | "Has 10.10.3.45 ever sent unusual amounts of data to the internet?" |
@@ -179,42 +180,49 @@ These steps reproduce [`docs/demo.gif`](docs/demo.gif) by hand. The LLM writes a
 time, so the wording changes, but the numbers come from Elasticsearch and should match.
 
 **1. Bring up the stack.** First install Docker Desktop or Colima with 4 CPUs and 8 GB of RAM, as
-in [Quick start](#quick-start) step 1. Then run:
+in [Quick start](#quick-start) step 1. The GPU question is about **this morning**, so start the stack
+**after 09:00 site time**, and set `SITE_TZ` to your own time zone. The planted incident is at
+07:40–09:00 on the day `es-setup` first runs, and data that hasn't happened yet can't be backfilled.
+On a later day, reset with `docker compose down -v` so "this morning" means today again.
 
 ```sh
 cp .env.example .env               # then set GEMINI_API_KEY in .env
+echo 'SITE_TZ=America/New_York' >> .env   # your time zone
 docker compose up -d --build
 ./check-stack-health.sh            # all OK; es-setup and kibana-setup show "Exited (0)"
 open http://localhost:8501
 ```
 
 `es-setup` backfills 14 days of history in about 30 seconds, then the collector and generator
-start. If the health check reports FLOW TSDS as STALE, wait a minute and run it again. The sidebar should show **🟢 Live** and about 240,000 rollup
-docs. If you see "GEMINI_API_KEY is not set", add the key to `.env` and run
+start. If the health check reports FLOW TSDS as STALE, wait a minute and run it again. The
+sidebar should show **🟢 Live** and about 280,000 rollup docs. If you see "GEMINI_API_KEY is not set", add the key to `.env` and run
 `docker compose up -d flowwatch-app`.
 
 **2. Start the live incident now,** because it needs about 2 minutes to show up. In the sidebar,
 find **Suspicious upload to unknown host** and click **Start for 15 min**. You can also run
 `curl -X POST "http://localhost:8000/scenarios/data-exfiltration?minutes=15"`.
 
-**3. Ask about yesterday's ERP slowdown.** In the sidebar under **Try asking**, click:
+**3. Ask why the GPU cluster is slow.** In the sidebar under **Try asking**, click:
 
-> Users said the ERP app was slow yesterday afternoon. Was there a network cause?
+> Why is the GPU cluster so slow this morning?
 
 The status shows "Thinking…" and then each Elasticsearch function call. The answer takes 30–90
 seconds. Check that it contains:
 
 - A chart of the MPLS link (`edge-rtr-01` `Gi0/0/1`, 500 Mbps), with outbound traffic pinned near
-  capacity from about 13:05 to 14:35 yesterday (site time zone).
-- **Evidence:** a peak of about 485 Mbps (97%), driven by `file-share-smb`. The top talker is
-  `10.10.8.77`, which sent about 290 GB to `10.30.2.10:445`, the DC file server.
-- **Recommended next steps,** such as QoS for ERP traffic and investigating `10.10.8.77`.
+  capacity from about 07:40 to 09:00 this morning (site time zone).
+- **Evidence:** the GPU cluster (`10.10.9.11–14`) writes checkpoints to NFS on `10.30.3.10` over
+  that link. Its throughput fell from about 140 Mbps to about 100 Mbps while the link peaked at
+  about 485 Mbps (97%). The cause is `file-share-smb`: `10.10.8.77` sent about 200 GB to
+  `10.30.2.10:445`, the DC file server.
+- **Recommended next steps,** such as QoS that protects the GPU checkpoint traffic and
+  investigating `10.10.8.77`.
 - **📈 Graphs in Kibana:** links for each host in the answer, plus *all traffic*.
 
 **4. Open the Kibana link.** Click **10.10.8.77** under *Graphs in Kibana*. The **FlowWatch
 traffic explorer** dashboard opens filtered to that host and the incident window. It shows
 throughput by application, conversation and egress interface, with `file-share-smb` at about
-430 Mbit/s. Under **Top conversations**, `10.10.8.77 → 10.30.2.10` port 445 has about 270 GB.
+370–430 Mbit/s. Under **Top conversations**, `10.10.8.77 → 10.30.2.10` port 445 has about 200 GB.
 
 **5. Ask about the live incident.** Wait until about 2 minutes have passed since step 2. Then
 click **🧹 New conversation**, and under **Try asking** click:

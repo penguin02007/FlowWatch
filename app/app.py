@@ -22,7 +22,7 @@ IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 SAMPLE_QUESTIONS = [
     "What is using the internet link right now, and is that normal for this time of day?",
-    "Users said the ERP app was slow yesterday afternoon. Was there a network cause?",
+    "Why is the GPU cluster so slow this morning?",
     "Did the nightly backup behave differently at any point in the last week?",
     "Is video conferencing traffic growing? When would the internet uplink hit 80% at peak?",
     "Has host 10.10.3.45 ever sent unusual amounts of data to the internet?",
