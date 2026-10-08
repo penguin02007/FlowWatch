@@ -1,5 +1,7 @@
 # FlowWatch: LLM + Elasticsearch + NetFlow
 
+This is a demo created for my talk in 2026 ElasticOn to show how Netflow, Large Language Models (LLMs) works with Elasticsearch.
+
 A docker-compose stack which an LLM answers network performance questions as they come up. It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
@@ -8,7 +10,7 @@ correlating historical flow trends and bandwidth use in Elasticsearch.
 ## Stack
 
 Routers export NetFlow v9 and IPFIX to a collector, which stores one-minute rollups in an
-Elasticsearch time series data stream (TSDS). An LLM then answers questions by calling functional calls, and each
+Elasticsearch time series data stream (TSDS). An LLM then answers questions by executing function calls, and each
 call queries that data through the Elasticsearch Aggregations API.
 
 ```text
@@ -43,18 +45,19 @@ call queries that data through the Elasticsearch Aggregations API.
 | `kibana` | [localhost:5601](http://localhost:5601), for exploring `metrics-netflow.flows-*` directly. |
 | `kibana-setup` | Creates the `FlowWatch flows (TSDS)` data view and the **FlowWatch traffic explorer** dashboard (throughput by application, conversation and egress interface, plus a top-conversations table). |
 
-**Kibana Dashboard:** We know LLM sometimes hallucinate. Under each answer, the app links every host IP mentions to
+**Kibana Dashboard:** Under each answer, the app links every host IP mentions to
 the traffic explorer dashboard. The link carries a KQL query (`source.ip:"10.10.8.77" or
 destination.ip:"10.10.8.77"`) and the time window of the function call that found the host. Each
 function call in the evidence panel also has an *open this slice in Kibana* link that applies the
-same filters. If Kibana isn't reachable at `http://localhost:5601` from the browser, set
-`KIBANA_PUBLIC_URL`.
+same filters.
 
-## Quick start
+## Demo
 
-These steps are for macOS (Apple silicon or Intel). Every image runs natively on arm64.
+### Quick start
 
-**1. Install a Docker engine with Compose v2.** Give it at least 4 CPUs and 8 GB of RAM, because
+These steps are for macOS (Apple silicon or Intel).
+
+**1. Install Docker engine with Compose v2.** System should have at least 4 CPUs and 8 GB of RAM, because
 Elasticsearch and Kibana need the memory. Pick one:
 
 - **[Docker Desktop](https://www.docker.com/products/docker-desktop/):** install it, then set
@@ -86,7 +89,7 @@ docker compose logs -f es-setup   # backfill takes ~30s, then the collector star
 
 Open http://localhost:8501 and click a sample question.
 
-## Dev container
+### Dev container
 
 The repo includes a VS Code dev container that attaches to the `flowwatch-app` service. Your
 working copy is mounted at `/workspace`, and Streamlit reloads when you save a file.
@@ -108,7 +111,7 @@ working copy is mounted at `/workspace`, and Streamlit reloads when you save a f
    Inside the container, run the pipeline tests from the Testing panel or with
    `cd pipeline && python -m unittest discover -s tests`.
 
-## Data model (TSDS)
+### Data Model (TSDS)
 
 `metrics-netflow.flows-default` is a time series data stream. Each document is one bucket
 (1 minute live, 5 minutes for older backfill) for one set of dimensions:
@@ -122,7 +125,7 @@ A TSDS write index only accepts data within `index.look_back_time` (7 days at mo
 data goes to a normal write index. This is the same technique as Elastic's "reindex a TSDS"
 guide; see `pipeline/flowwatch/setup_es.py`.
 
-## LLM
+### LLM
 
 LLM uses "functional call" and the model can ask the app to run. FlowWatch describes each functional call to
 Gemini by name, purpose and a JSON schema of its parameters (time window, group-by dimension,
@@ -150,7 +153,7 @@ UI shows each function call, the exact request body and the result the model saw
 | `detect_anomalies` | Groups with `terms` and buckets with `date_histogram` across the window and the baseline days, then compares each bucket with the same time of day on earlier days |
 | `run_aggregation` | escape hatch: the LLM writes its own aggregation DSL (no scripts) |
 
-## Demo script
+### Demo script
 
 The backfilled history contains these planted events, relative to the day `es-setup` first ran, in
 the site time zone (`SITE_TZ`):
@@ -256,7 +259,7 @@ Check that the answer contains:
 a few requests per minute and about 20 per day **per Google Cloud project**. A new key from the
 same project shares that quota. For a live demo, use a key with billing enabled.
 
-## Operations
+### Operations
 
 ```sh
 ./check-stack-health.sh
@@ -265,7 +268,7 @@ docker compose run --rm flow-collector python -m unittest discover -s tests   # 
 docker compose down -v                          # wipe everything, including history
 ```
 
-**Optional ElastiFlow:** to also feed ElastiFlow (for its Kibana dashboards in `kibana/`), run:
+**Optional ElastiFlow:** Also feed ElastiFlow (for its Kibana dashboards in `kibana/`), run:
 
 ```sh
 FLOW_TARGETS=flow-collector:2055,elastiflow:2055 docker compose --profile elastiflow up -d
