@@ -48,9 +48,17 @@ class ModelTest(unittest.TestCase):
         self.assertGreater(mpls_out, 0.9 * cap)
 
     def test_history_incidents(self):
-        anchor = anchor_for(datetime(2026, 9, 29, 12, 0, tzinfo=timezone.utc))
-        t = anchor + timedelta(hours=8, minutes=15)
-        self.assertIn(("smb-bulk-copy", 1.0), history_scenarios(t, anchor))
+        setup_at = datetime(2026, 9, 29, 6, 0, tzinfo=timezone.utc)
+        anchor = anchor_for(setup_at)
+        # The earlier-today incident runs 04:10-05:30, ending 30 minutes before setup.
+        for t, active in ((setup_at - timedelta(minutes=111), False),
+                          (setup_at - timedelta(minutes=110), True),
+                          (setup_at - timedelta(minutes=31), True),
+                          (setup_at - timedelta(minutes=30), False)):
+            self.assertEqual(("smb-bulk-copy", 1.0) in history_scenarios(t, anchor, setup_at), active, t)
+        # Fixed-time incidents still follow the anchor day.
+        t = anchor - timedelta(days=5) + timedelta(hours=16, minutes=30)
+        self.assertIn(("update-storm", 1.0), history_scenarios(t, anchor, setup_at))
 
     def test_rollup_merges_identical_dimensions(self):
         r = Rollup()

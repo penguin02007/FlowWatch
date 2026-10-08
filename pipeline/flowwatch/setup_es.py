@@ -1,7 +1,7 @@
 """One-shot bootstrap: TSDS template, inventory index, and history backfill.
 
-Idempotent: on re-run it keeps the original history anchor and only fills the
-gap between the newest document and now.
+Idempotent: on re-run it keeps the original history anchor and setup time, and only
+fills the gap between the newest document and now.
 """
 from __future__ import annotations
 
@@ -78,17 +78,23 @@ def finish_history_load(es: Elasticsearch) -> None:
     log.info("rolled over from history index %s to write index %s", write_index, res["new_index"])
 
 
-def load_anchor(es: Elasticsearch) -> datetime | None:
+def load_history_times(es: Elasticsearch) -> tuple[datetime, datetime] | None:
+    """The history anchor and the time es-setup first ran, or None on a fresh stack."""
     try:
         meta = es.get(index=INVENTORY_INDEX, id="meta")["_source"]
-        return datetime.fromisoformat(meta["history_anchor"]).astimezone(SITE_TZ)
     except NotFoundError:
         return None
+    anchor = datetime.fromisoformat(meta["history_anchor"]).astimezone(SITE_TZ)
+    # Stacks created before the setup time was stored keep the old 07:40-09:00 incident.
+    setup_at = meta.get("history_setup_at")
+    setup_at = datetime.fromisoformat(setup_at) if setup_at else anchor + timedelta(hours=9, minutes=30)
+    return anchor, setup_at.astimezone(SITE_TZ)
 
 
-def write_inventory(es: Elasticsearch, anchor: datetime) -> None:
+def write_inventory(es: Elasticsearch, anchor: datetime, setup_at: datetime) -> None:
     docs = [{
         "_id": "meta", "kind": "meta", "history_anchor": anchor.isoformat(),
+        "history_setup_at": setup_at.isoformat(),
         "site_timezone": str(SITE_TZ), "data_stream": DATA_STREAM,
         "notes": "Each conversation is observed by exactly one exporter, so totals across exporters "
                  "do not double count. Rollups are 1-minute buckets (older backfilled history uses 5 minutes).",
@@ -118,7 +124,7 @@ def newest_timestamp(es: Elasticsearch) -> datetime | None:
     return datetime.fromtimestamp(value / 1000, timezone.utc) if value else None
 
 
-def backfill_actions(start: datetime, end: datetime, anchor: datetime, stats: dict):
+def backfill_actions(start: datetime, end: datetime, anchor: datetime, setup_at: datetime, stats: dict):
     rng = random.Random(int(start.timestamp()))
     t = start
     fine_from = end - timedelta(hours=FINE_HOURS)
@@ -129,7 +135,7 @@ def backfill_actions(start: datetime, end: datetime, anchor: datetime, stats: di
         mid = t + timedelta(seconds=step / 2)
         bucket_ms = int(t.timestamp() * 1000)
         rollup = Rollup()
-        for s in samples_at(mid, anchor, history_scenarios(mid, anchor), rng):
+        for s in samples_at(mid, anchor, history_scenarios(mid, anchor, setup_at), rng):
             nbytes = s.bps * step / 8
             rollup.add(bucket_ms, s.exporter, s.in_if, s.out_if, s.src_ip, s.dst_ip, s.src_port,
                        s.dst_port, PROTO_NUM[s.transport], nbytes, max(1, nbytes // 1100),
@@ -140,7 +146,7 @@ def backfill_actions(start: datetime, end: datetime, anchor: datetime, stats: di
         t += timedelta(seconds=step)
 
 
-def backfill(es: Elasticsearch, anchor: datetime) -> None:
+def backfill(es: Elasticsearch, anchor: datetime, setup_at: datetime) -> None:
     newest = newest_timestamp(es)
     oldest_allowed = datetime.now(timezone.utc) - timedelta(days=BACKFILL_DAYS)
     start = (newest + timedelta(minutes=1)) if newest else anchor.astimezone(timezone.utc) - timedelta(days=BACKFILL_DAYS)
@@ -154,7 +160,7 @@ def backfill(es: Elasticsearch, anchor: datetime) -> None:
         stats = {"docs": 0}
         errors = 0
         for ok, item in helpers.streaming_bulk(
-            es, backfill_actions(start, end, anchor, stats), chunk_size=5000, raise_on_error=False,
+            es, backfill_actions(start, end, anchor, setup_at, stats), chunk_size=5000, raise_on_error=False,
         ):
             if not ok:
                 errors += 1
@@ -170,10 +176,11 @@ def main() -> None:
     es = Elasticsearch(os.getenv("ES_HOST", "http://elasticsearch:9200"), request_timeout=120)
     wait_for(es)
     ensure_data_stream(es)
-    anchor = load_anchor(es) or anchor_for(datetime.now(timezone.utc))
-    write_inventory(es, anchor)
-    log.info("history anchor: %s (site tz %s)", anchor.isoformat(), SITE_TZ)
-    backfill(es, anchor)
+    now = datetime.now(timezone.utc)
+    anchor, setup_at = load_history_times(es) or (anchor_for(now), now.astimezone(SITE_TZ))
+    write_inventory(es, anchor, setup_at)
+    log.info("history anchor: %s, setup at %s (site tz %s)", anchor.isoformat(), setup_at.isoformat(), SITE_TZ)
+    backfill(es, anchor, setup_at)
     finish_history_load(es)
     log.info("setup complete")
 

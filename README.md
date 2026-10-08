@@ -97,11 +97,13 @@ Open http://localhost:8501 and click a sample question.
 
 These steps reproduce [`docs/demo.gif`](docs/demo.gif) manually.
 
-**1. Bring up the stack.** First install Docker Desktop or Colima with 4 CPUs and 8 GB of RAM, as
-in [Quick start](#quick-start) step 1. The GPU question is about **this morning**, so start the stack
-**after 09:00 site time**, and set `SITE_TZ` to your own time zone. The planted incident is at
-07:40–09:00 on the day `es-setup` first runs, and data that hasn't happened yet can't be backfilled.
-On a later day, reset with `docker compose down -v` so "this morning" means today again.
+**1. Bring up the stack.** Install Colima as
+in [Quick start](#quick-start) step 1, and set `SITE_TZ` to local time zone.
+
+The planted GPU incident runs for 80 minutes and ends 30 minutes before `es-setup` first runs, so
+you can ask about it as soon as the stack is up. The question asks about **earlier today**, so
+start the stack after about 02:00 site time, when the incident fits inside today. On a later day,
+reset with `docker compose down -v` so "earlier today" means today again.
 
 ```sh
 cp .env.example .env               # then set GEMINI_API_KEY in .env
@@ -122,15 +124,15 @@ find **Suspicious upload to unknown host** and click **Start for 15 min**. You c
 
 **3. Ask why the GPU cluster is slow.** In the sidebar under **Try asking**, click:
 
-> Why is the GPU cluster so slow this morning?
+> Why was the GPU cluster slow earlier today?
 
 The status shows "Thinking…" and then each Elasticsearch function call. The answer takes 30–90
 seconds. Check that it contains:
 
 - A chart of the MPLS link (`edge-rtr-01` `Gi0/0/1`, 500 Mbps), with outbound traffic pinned near
-  capacity from about 07:40 to 09:00 this morning (site time zone).
+  capacity from about 1 h 50 min to 30 min before you started the stack (site time zone).
 - **Evidence:** the GPU cluster (`10.10.9.11–14`) writes checkpoints to NFS on `10.30.3.10` over
-  that link. Its throughput fell from about 140 Mbps to about 100 Mbps while the link peaked at
+  that link. Its throughput fell from about 140 Mbps to about 100–110 Mbps while the link peaked at
   about 485 Mbps (97%). The cause is `file-share-smb`: `10.10.8.77` sent about 200 GB to
   `10.30.2.10:445`, the DC file server.
 - **Recommended next steps,** such as QoS that protects the GPU checkpoint traffic and
@@ -283,7 +285,7 @@ the site time zone (`SITE_TZ`):
 
 | When | What happened | Question to ask |
 |---|---|---|
-| Today 07:40–09:00 | `10.10.8.77` SMB bulk copy saturates the 500 Mbps MPLS link (97%) and starves the GPU cluster's checkpoint writes (`10.10.9.11–14` → `10.30.3.10` NFS) | "Why is the GPU cluster so slow this morning?" |
+| Today, 1 h 50 min to 30 min before `es-setup` first ran | `10.10.8.77` SMB bulk copy saturates the 500 Mbps MPLS link (97%) and starves the GPU cluster's checkpoint writes (`10.10.9.11–14` → `10.30.3.10` NFS) | "Why was the GPU cluster slow earlier today?" |
 | 3 days ago 03:00–09:30 | rsync backup overran its 01:00–03:00 window on the DCI link | "Did the nightly backup behave differently in the last week?" |
 | 5 days ago 16:00–17:10 | Windows update storm, about 780 Mbps on the internet uplink | "Find the biggest anomalies in the last 7 days." |
 | 8 days ago 10:40 | `10.10.3.45` uploads to `185.220.101.7` | "Has 10.10.3.45 ever sent unusual amounts of data to the internet?" |
