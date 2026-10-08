@@ -42,7 +42,7 @@ services:
     networks:
       - netflow-net
 
-  # One-shot: Kibana data view + "FlowWatch traffic explorer" dashboard (the chat links into it).
+  # Kibana data view + "FlowWatch traffic explorer" dashboard
   kibana-setup:
     <<: *pipeline
     container_name: kibana-setup
@@ -53,7 +53,7 @@ services:
     depends_on:
       - kibana
 
-  # One-shot: TSDS index template + data stream, inventory, and history backfill.
+  # TSDS index template + data stream, inventory, and history backfill
   es-setup:
     <<: *pipeline
     container_name: es-setup
@@ -66,7 +66,7 @@ services:
       elasticsearch:
         condition: service_healthy
 
-  # NetFlow v9 / IPFIX collector -> 1-minute rollups in the TSDS.
+  # NetFlow v9 / IPFIX collector (1-minute rollups in TSDS)
   flow-collector:
     <<: *pipeline
     container_name: flow-collector
@@ -78,7 +78,8 @@ services:
       es-setup:
         condition: service_completed_successfully
 
-  # Simulated exporters (edge-rtr-01 = NetFlow v9, dc-core-01 = IPFIX) + scenario control API.
+  # Simulated exporters
+  # (edge-rtr-01 = NetFlow v9, dc-core-01 = IPFIX) + scenario control API
   flow-generator:
     <<: *pipeline
     container_name: flow-generator
@@ -135,7 +136,7 @@ services:
     networks:
       - netflow-net
 
-  # Optional: watch export packets on the wire (docker compose --profile debug up udp-probe).
+  # Debugging: Watch export packets on wire (docker compose --profile debug up udp-probe).
   udp-probe:
     image: ubuntu:22.04
     container_name: udp-probe

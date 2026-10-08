@@ -1,4 +1,4 @@
-"""FlowWatch NetOps Copilot: chat with an LLM that queries NetFlow data in Elasticsearch."""
+"""FlowWatch: chat with LLM that queries NetFlow data in Elasticsearch."""
 import json
 import os
 import re
