@@ -7,6 +7,19 @@ correlating historical flow trends and bandwidth use in Elasticsearch.
 
 ![FlowWatch demo: a slow GPU cluster traced to host 10.10.8.77 saturating the MPLS link, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
 
+## Table of Contents
+
+- [Stack](#stack)
+- [Demo](#demo)
+  - [Quick start](#quick-start)
+  - [Data Model (TSDS)](#data-model-tsds)
+  - [LLM](#llm)
+  - [Demo script](#demo-script)
+  - [Reproduce the demo](#reproduce-the-demo)
+- [Configuration (`.env`)](#configuration-env)
+  - [Operations](#operations)
+- [Reference](#reference)
+
 ## Stack
 
 Routers export NetFlow v9 and IPFIX to a collector, which stores one-minute rollups in an
@@ -78,38 +91,42 @@ Elasticsearch and Kibana need the memory. Pick one:
 
 Check that `docker compose version` prints v2 or later.
 
-**2. Configure and start the stack.**
+**2. Set `GEMINI_API_KEY`.**
 
 ```sh
 cp .env.example .env              # then set GEMINI_API_KEY in .env
-docker compose up -d --build
-docker compose logs -f es-setup   # backfill takes ~30s, then the collector starts (Ctrl-C to exit)
-./check-stack-health.sh           # Elasticsearch, Kibana, flow freshness, containers
 ```
 
+**3. Start the stack.** Both options run the same services on the Docker engine from step 1. Pick one:
+
+- **Docker Compose (run the demo):**
+
+  ```sh
+  docker compose up -d --build
+  docker compose logs -f es-setup   # backfill takes ~30s, then the collector starts (Ctrl-C to exit)
+  ./check-stack-health.sh           # Elasticsearch, Kibana, flow freshness, containers
+  ```
+
+- **VS Code dev container (change the code):** VS Code attaches to the `flowwatch-app`
+  service. Your working copy is mounted at `/workspace`, and Streamlit reloads when you save a
+  file.
+
+  1. Install the **Dev Containers** extension (`ms-vscode-remote.remote-containers`). VS Code
+     suggests it when you open the repo.
+  2. Check that the compose files merge cleanly:
+
+     ```sh
+     docker compose -f docker-compose.yaml -f .devcontainer/docker-compose.devcontainer.yml config
+     ```
+
+  3. Run **Dev Containers: Reopen in Container** from the Command Palette. The first start
+     builds the images and waits for Elasticsearch and `es-setup`, so it takes a few minutes.
+     Closing the VS Code window stops the stack.
+
+  Inside the container, run the pipeline tests from the Testing panel or with
+  `cd pipeline && python -m unittest discover -s tests`.
+
 Open http://localhost:8501 and click a sample question.
-
-### Dev container
-
-The repo includes a VS Code dev container that attaches to the `flowwatch-app` service. Your
-working copy is mounted at `/workspace`, and Streamlit reloads when you save a file.
-
-1. **Install Docker and Docker Compose v2,** as in [Quick start](#quick-start) step 1. Then
-   install the **Dev Containers** extension (`ms-vscode-remote.remote-containers`). VS Code
-   suggests it when you open the repo.
-
-2. **Set `GEMINI_API_KEY`.** Copy `.env.example` to `.env` in the repo root and fill in the key.
-
-3. **Validate the config and open the container.** Check that the compose files merge cleanly:
-
-   ```sh
-   docker compose -f docker-compose.yaml -f .devcontainer/docker-compose.devcontainer.yml config
-   ```
-
-   Then run **Dev Containers: Reopen in Container** from the Command Palette. The first start
-   builds the images and waits for Elasticsearch and `es-setup`, so it takes a few minutes.
-   Inside the container, run the pipeline tests from the Testing panel or with
-   `cd pipeline && python -m unittest discover -s tests`.
 
 ### Data Model (TSDS)
 
