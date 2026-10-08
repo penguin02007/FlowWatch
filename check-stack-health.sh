@@ -1,83 +1,47 @@
-$ErrorActionPreference = 'Stop'
+#!/usr/bin/env bash
+# FlowWatch stack health: Elasticsearch, Kibana, flow freshness, and container status.
+set -u
 
-$esUrl = 'http://localhost:9200/_cluster/health?pretty'
-$kibanaUrl = 'http://localhost:5601/api/status'
+ES=http://localhost:9200
+KIBANA=http://localhost:5601
 
-function Get-JsonFromUrl {
-    param(
-        [string]$Url
-    )
+green() { printf '\033[32m%s\033[0m\n' "$*"; }
+yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
+red() { printf '\033[31m%s\033[0m\n' "$*"; }
 
-    try {
-        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 20
-        return @{ StatusCode = $response.StatusCode; Body = $response.Content }
-    }
-    catch {
-        return @{ StatusCode = 0; Body = $_.Exception.Message }
-    }
-}
+echo '=== FlowWatch stack health ==='
 
-Write-Host '=== FlowWatch stack health ===' -ForegroundColor Cyan
+es_status=$(curl -s -m 20 "$ES/_cat/health?h=status" | tr -d '[:space:]')
+case "$es_status" in
+  green|yellow) green "ELASTICSEARCH: OK ($es_status)" ;;
+  "") red "ELASTICSEARCH: FAIL (no response from $ES)" ;;
+  *) yellow "ELASTICSEARCH: WARNING ($es_status)" ;;
+esac
 
-$es = Get-JsonFromUrl -Url $esUrl
-if ($es.StatusCode -eq 200) {
-    $esJson = $es.Body | ConvertFrom-Json
-    $esStatus = $esJson.status
-    if ($esStatus -in @('green','yellow')) {
-        Write-Host "ELASTICSEARCH: OK ($esStatus)" -ForegroundColor Green
-    }
-    else {
-        Write-Host "ELASTICSEARCH: WARNING ($esStatus)" -ForegroundColor Yellow
-    }
-    Write-Host $es.Body
-}
-else {
-    Write-Host "ELASTICSEARCH: FAIL (HTTP $($es.StatusCode))" -ForegroundColor Red
-    Write-Host $es.Body
-}
+kibana_level=$(curl -s -m 20 "$KIBANA/api/status" | grep -o '"overall":{"level":"[a-z]*"' | sed 's/.*"level":"//; s/"$//')
+case "$kibana_level" in
+  available) green "KIBANA: OK ($kibana_level)" ;;
+  "") red "KIBANA: FAIL (no response from $KIBANA)" ;;
+  *) yellow "KIBANA: WARNING ($kibana_level)" ;;
+esac
 
-Write-Host '---'
+last=$(curl -s -m 20 -H 'Content-Type: application/json' \
+  "$ES/metrics-netflow.flows-*/_search?size=0&filter_path=aggregations.last.value_as_string" \
+  -d '{"aggs":{"last":{"max":{"field":"@timestamp"}}}}' | sed -n 's/.*"value_as_string":"\([^"]*\)".*/\1/p')
+if [ -z "$last" ]; then
+  red "FLOW TSDS: FAIL (no flow data found)"
+else
+  ts=${last%%.*}; ts=${ts%Z}
+  # BSD date (macOS) first, then GNU date (Linux).
+  epoch=$(date -j -u -f '%Y-%m-%dT%H:%M:%S' "$ts" +%s 2>/dev/null || date -u -d "$ts" +%s)
+  age=$(( $(date -u +%s) - epoch ))
+  if [ "$age" -lt 180 ]; then
+    green "FLOW TSDS: OK (newest bucket $last, ${age}s ago)"
+  else
+    yellow "FLOW TSDS: STALE (newest bucket $last, ${age}s ago) - check flow-collector logs"
+  fi
+fi
 
-$kibana = Get-JsonFromUrl -Url $kibanaUrl
-if ($kibana.StatusCode -eq 200) {
-    try {
-        $kibanaJson = $kibana.Body | ConvertFrom-Json
-        $kibanaStatus = $kibanaJson.status
-        if ($kibanaStatus -in @('green','yellow')) {
-            Write-Host "KIBANA: OK ($kibanaStatus)" -ForegroundColor Green
-        }
-        else {
-            Write-Host "KIBANA: WARNING ($kibanaStatus)" -ForegroundColor Yellow
-        }
-        Write-Host $kibana.Body
-    }
-    catch {
-        Write-Host 'KIBANA: OK (HTML reached, but JSON parse may differ by version)' -ForegroundColor Green
-        Write-Host $kibana.Body.Substring(0, [Math]::Min(300, $kibana.Body.Length))
-    }
-}
-else {
-    Write-Host "KIBANA: FAIL (HTTP $($kibana.StatusCode))" -ForegroundColor Red
-    Write-Host $kibana.Body
-}
-
-Write-Host '---'
-
-$tsds = Get-JsonFromUrl -Url 'http://localhost:9200/metrics-netflow.flows-*/_search?size=0&filter_path=aggregations&source_content_type=application/json&source={"aggs":{"last":{"max":{"field":"@timestamp"}}}}'
-if ($tsds.StatusCode -eq 200) {
-    $last = ($tsds.Body | ConvertFrom-Json).aggregations.last.value_as_string
-    $age = [int]((Get-Date).ToUniversalTime() - [datetime]::Parse($last).ToUniversalTime()).TotalSeconds
-    if ($age -lt 180) {
-        Write-Host "FLOW TSDS: OK (newest bucket $last, ${age}s ago)" -ForegroundColor Green
-    }
-    else {
-        Write-Host "FLOW TSDS: STALE (newest bucket $last, ${age}s ago) - check flow-collector logs" -ForegroundColor Yellow
-    }
-}
-else {
-    Write-Host "FLOW TSDS: FAIL (HTTP $($tsds.StatusCode))" -ForegroundColor Red
-}
-
-Write-Host '---'
-Write-Host 'Docker services:' -ForegroundColor Cyan
-& 'C:\Program Files\Docker\Docker\resources\bin\docker.exe' compose ps
+echo '---'
+echo 'Docker services:'
+docker compose ps -a --format 'table {{.Name}}\t{{.State}}\t{{.Status}}'

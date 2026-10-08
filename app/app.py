@@ -11,7 +11,7 @@ import streamlit as st
 from elasticsearch import Elasticsearch
 
 from agent import NetOpsAgent
-from tools import SITE_TZ, FlowTools, host_kql
+from functions import SITE_TZ, FlowFunctions, host_kql
 
 GENERATOR_URL = os.getenv("GENERATOR_URL", "http://flow-generator:8000")
 # Browser-facing Kibana address (links are opened by the viewer, not the container).
@@ -33,14 +33,14 @@ st.set_page_config(page_title="FlowWatch", page_icon="📡", layout="wide")
 
 
 @st.cache_resource
-def get_tools() -> FlowTools:
+def get_functions() -> FlowFunctions:
     es = Elasticsearch(os.getenv("ES_HOST", "http://elasticsearch:9200"), request_timeout=30)
-    return FlowTools(es)
+    return FlowFunctions(es)
 
 
 @st.cache_resource
 def get_agent() -> NetOpsAgent:
-    return NetOpsAgent(get_tools())
+    return NetOpsAgent(get_functions())
 
 
 def chart(spec: dict) -> None:
@@ -87,7 +87,7 @@ def kibana_url(kql: str, start: str, end: str) -> str:
 
 
 def _host_window(ip: str, steps: list[dict]) -> tuple[str, str]:
-    """Narrowest tool window whose result mentions the host, padded for context."""
+    """Narrowest function-call window whose result mentions the host, padded for context."""
     windows = (
         [s["kibana"] for s in steps if s.get("kibana") and ip in json.dumps(s["result"])]
         or [s["kibana"] for s in steps if s.get("kibana")]
@@ -118,14 +118,14 @@ def render_steps(steps: list[dict]) -> None:
     if not steps:
         return
     n_queries = sum(len(s.get("queries", [])) for s in steps)
-    with st.expander(f"🔎 {len(steps)} tool calls · {n_queries} Elasticsearch aggregation requests"):
+    with st.expander(f"🔎 {len(steps)} function calls · {n_queries} Elasticsearch aggregation requests"):
         for i, step in enumerate(steps, 1):
             took = sum(q.get("took_ms") or 0 for q in step.get("queries", []))
             link = ""
             if step.get("kibana"):
                 k = step["kibana"]
                 link = f" · [open this slice in Kibana](<{kibana_url(k['kql'], k['from'], k['to'])}>)"
-            st.markdown(f"**{i}. `{step['tool']}`** · {took} ms in Elasticsearch{link}")
+            st.markdown(f"**{i}. `{step['function']}`** · {took} ms in Elasticsearch{link}")
             st.code(json.dumps(step["args"], indent=2), language="json")
             tabs = st.tabs(["Result sent to the LLM", "Elasticsearch request"])
             with tabs[0]:
@@ -139,7 +139,7 @@ def sidebar() -> None:
     with st.sidebar:
         st.subheader("Pipeline")
         try:
-            status = get_tools().pipeline_status()
+            status = get_functions().pipeline_status()
             age = status["last_age_s"]
             col1, col2 = st.columns(2)
             col1.metric("Rollup docs", f"{status['docs']:,}")
@@ -209,8 +209,8 @@ def main() -> None:
         def on_step(step: dict) -> None:
             args = ", ".join(f"{k}={json.dumps(v)}" for k, v in step["args"].items())
             error = step["result"].get("error") if isinstance(step["result"], dict) else None
-            status.write(f"{'⚠️' if error else '🔧'} `{step['tool']}({args})`" + (f" → {error}" if error else ""))
-            status.update(label=f"Querying Elasticsearch… ({step['tool']})")
+            status.write(f"{'⚠️' if error else '🔧'} `{step['function']}({args})`" + (f" → {error}" if error else ""))
+            status.update(label=f"Querying Elasticsearch… ({step['function']})")
 
         try:
             answer, steps = get_agent().ask(st.session_state.history, question, on_step)
@@ -218,7 +218,7 @@ def main() -> None:
             status.update(label="Failed", state="error")
             st.error(f"LLM error: {err}")
             return
-        status.update(label=f"Done: {len(steps)} tool calls", state="complete", expanded=False)
+        status.update(label=f"Done: {len(steps)} function calls", state="complete", expanded=False)
         render_steps(steps)
         st.markdown(answer)
         render_kibana_links(answer, steps)
