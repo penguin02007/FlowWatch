@@ -1,6 +1,6 @@
 # FlowWatch
 
-This is a demo I created for my [talk](https://penguin02007.github.io/2026-elasticon-network-telemetry-genai) in 2026 ElasticOn to show how language models (LLMs) can work with netflow data using Elasticsearch.
+This is a demo I created for my [talk](https://penguin02007.github.io/2026-elasticon-network-telemetry-genai) at ElasticON 2026 to show how large language models (LLMs) can work with NetFlow data using Elasticsearch.
 
 ![FlowWatch demo: a slow GPU cluster traced to host 10.10.8.77 saturating the MPLS link, its graphs opened in Kibana, then a live upload incident spotted](docs/demo.gif)
 
@@ -19,9 +19,9 @@ This is a demo I created for my [talk](https://penguin02007.github.io/2026-elast
 
 ## Introduction
 
-The purpose of this demo is to demonstrate how GenAI can bridge the network domain gap. By giving meaningful context to the netflow data, it empowers the user to query the data and understand the data.
+This demo shows how GenAI can bridge the network domain gap: the knowledge that usually only network engineers have. FlowWatch adds meaningful context to NetFlow data, such as site, application and link names, so anyone can query it and understand the results.
 
-A docker-compose stack in which an LLM answers network performance questions as they come up. It works out the answers by
+FlowWatch is a Docker Compose stack in which an LLM answers network performance questions as they come up. It works out the answers by
 correlating historical flow trends and bandwidth use in Elasticsearch.
 
 ## Quick start
