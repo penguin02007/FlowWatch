@@ -14,6 +14,7 @@ from .topology import (
     EXPORTERS_BY_NAME,
     HISTORY_INCIDENTS,
     MBPS,
+    Incident,
     SCENARIOS,
     Conversation,
 )
@@ -72,11 +73,19 @@ def anchor_for(now: datetime) -> datetime:
     return local.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def history_scenarios(t: datetime, anchor: datetime) -> list[tuple[str, float]]:
+def incident_start(inc: Incident, anchor: datetime, setup_at: datetime) -> datetime:
+    if inc.ends_min_before_setup is not None:
+        end = (setup_at - timedelta(minutes=inc.ends_min_before_setup)).astimezone(SITE_TZ)
+        end = end.replace(minute=end.minute - end.minute % 15, second=0, microsecond=0)
+        return end - timedelta(minutes=inc.duration_min)
+    day = anchor - timedelta(days=inc.days_ago)
+    return day.replace(hour=inc.hour, minute=inc.minute)
+
+
+def history_scenarios(t: datetime, anchor: datetime, setup_at: datetime) -> list[tuple[str, float]]:
     active = []
     for inc in HISTORY_INCIDENTS:
-        day = anchor - timedelta(days=inc.days_ago)
-        start = day.replace(hour=inc.hour, minute=inc.minute)
+        start = incident_start(inc, anchor, setup_at)
         if start <= t < start + timedelta(minutes=inc.duration_min):
             active.append((inc.scenario, inc.scale))
     return active

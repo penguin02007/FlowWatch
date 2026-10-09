@@ -244,20 +244,27 @@ SCENARIOS: dict[str, Scenario] = {
 
 @dataclass(frozen=True)
 class Incident:
-    """A scenario that ran in the past, relative to the backfill anchor day."""
+    """A scenario that ran in the past.
+
+    It starts at ``hour``:``minute`` site time, ``days_ago`` days before the backfill
+    anchor day. If ``ends_min_before_setup`` is set, it instead ends at least that many
+    minutes before ``es-setup`` first ran, so it is always fully backfilled. That end is
+    rounded down to a quarter hour, so the incident fills whole 15-minute chart buckets.
+    """
 
     scenario: str
-    days_ago: int
-    hour: int
-    minute: int
     duration_min: int
+    days_ago: int = 0
+    hour: int = 0
+    minute: int = 0
     scale: float = 1.0
+    ends_min_before_setup: int | None = None
 
 
 HISTORY_INCIDENTS: tuple[Incident, ...] = (
-    # This morning: the bulk copy saturates MPLS and starves the GPU cluster's checkpoint writes.
-    Incident("smb-bulk-copy", days_ago=0, hour=7, minute=40, duration_min=80),
-    Incident("backup-overrun", days_ago=3, hour=3, minute=0, duration_min=390),
-    Incident("update-storm", days_ago=5, hour=16, minute=0, duration_min=70),
-    Incident("data-exfiltration", days_ago=8, hour=10, minute=40, duration_min=25, scale=0.4),
+    # Earlier today: the bulk copy saturates MPLS and starves the GPU cluster's checkpoint writes.
+    Incident("smb-bulk-copy", duration_min=30, ends_min_before_setup=30),
+    Incident("backup-overrun", duration_min=390, days_ago=3, hour=3, minute=0),
+    Incident("update-storm", duration_min=70, days_ago=5, hour=16, minute=0),
+    Incident("data-exfiltration", duration_min=25, days_ago=8, hour=10, minute=40, scale=0.4),
 )

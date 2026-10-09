@@ -1,4 +1,4 @@
-"""Minimal NetFlow v9 (RFC 3954) and IPFIX (RFC 7011) encoder / decoder.
+"""Minimal NetFlow v9 and IPFIX encoder / decoder.
 
 Covers the IPv4 flow fields this demo needs. The decoder is template driven:
 it learns templates per (exporter address, domain id) and skips sets it
