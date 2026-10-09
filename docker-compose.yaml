@@ -1,6 +1,9 @@
+# Four services share one image. Only es-setup builds it; the others set
+# pull_policy: never and reuse the local image, so parallel builds don't race
+# to tag the same name.
 x-pipeline: &pipeline
-  build: ./pipeline
   image: flowwatch/pipeline:latest
+  pull_policy: never
   environment: &pipeline-env
     ES_HOST: http://elasticsearch:9200
     SITE_TZ: ${SITE_TZ:-UTC}
@@ -56,6 +59,8 @@ services:
   # TSDS index template + data stream, inventory, and history backfill
   es-setup:
     <<: *pipeline
+    build: ./pipeline
+    pull_policy: missing
     container_name: es-setup
     command: ["python", "-m", "flowwatch.setup_es"]
     environment:
