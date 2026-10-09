@@ -75,7 +75,9 @@ def anchor_for(now: datetime) -> datetime:
 
 def incident_start(inc: Incident, anchor: datetime, setup_at: datetime) -> datetime:
     if inc.ends_min_before_setup is not None:
-        return setup_at - timedelta(minutes=inc.ends_min_before_setup + inc.duration_min)
+        end = (setup_at - timedelta(minutes=inc.ends_min_before_setup)).astimezone(SITE_TZ)
+        end = end.replace(minute=end.minute - end.minute % 15, second=0, microsecond=0)
+        return end - timedelta(minutes=inc.duration_min)
     day = anchor - timedelta(days=inc.days_ago)
     return day.replace(hour=inc.hour, minute=inc.minute)
 

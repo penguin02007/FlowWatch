@@ -100,10 +100,12 @@ These steps reproduce [`docs/demo.gif`](docs/demo.gif) manually.
 **1. Bring up the stack.** Install Colima as
 in [Quick start](#quick-start) step 1, and set `SITE_TZ` to local time zone.
 
-The planted GPU incident runs for 80 minutes and ends 30 minutes before `es-setup` first runs, so
-you can ask about it as soon as the stack is up. The question asks about **earlier today**, so
-start the stack after about 02:00 site time, when the incident fits inside today. On a later day,
-reset with `docker compose down -v` so "earlier today" means today again.
+`es-setup` writes the GPU incident into the backfilled history when the stack starts, so there is
+nothing to wait for: you can ask about it as soon as the stack is up. In the data, the incident is
+a 30-minute bulk copy that ended 30–45 minutes before the stack started, on a quarter hour. For
+example, if you start the stack at 14:00, it shows up at 13:00–13:30. The question asks about
+**earlier today**, so start the stack after about 01:30 site time, when the incident fits inside
+today. On a later day, reset with `docker compose down -v` so "earlier today" means today again.
 
 ```sh
 cp .env.example .env               # then set GEMINI_API_KEY in .env
@@ -130,10 +132,10 @@ The status shows "Thinking…" and then each Elasticsearch function call. The an
 seconds. Check that it contains:
 
 - A chart of the MPLS link (`edge-rtr-01` `Gi0/0/1`, 500 Mbps), with outbound traffic pinned near
-  capacity from about 1 h 50 min to 30 min before you started the stack (site time zone).
+  capacity for 30 minutes, ending 30–45 minutes before you started the stack (site time zone).
 - **Evidence:** the GPU cluster (`10.10.9.11–14`) writes checkpoints to NFS on `10.30.3.10` over
   that link. Its throughput fell from about 140 Mbps to about 100–110 Mbps while the link peaked at
-  about 485 Mbps (97%). The cause is `file-share-smb`: `10.10.8.77` sent about 200 GB to
+  about 485 Mbps (97%). The cause is `file-share-smb`: `10.10.8.77` sent about 80 GB to
   `10.30.2.10:445`, the DC file server.
 - **Recommended next steps,** such as QoS that protects the GPU checkpoint traffic and
   investigating `10.10.8.77`.
@@ -142,7 +144,7 @@ seconds. Check that it contains:
 **4. Open the Kibana link.** Click **10.10.8.77** under *Graphs in Kibana*. The **FlowWatch
 traffic explorer** dashboard opens filtered to that host and the incident window. It shows
 throughput by application, conversation and egress interface, with `file-share-smb` at about
-370–430 Mbit/s. Under **Top conversations**, `10.10.8.77 → 10.30.2.10` port 445 has about 200 GB.
+320–390 Mbit/s. Under **Top conversations**, `10.10.8.77 → 10.30.2.10` port 445 has about 80 GB.
 
 **5. Ask about the live incident.** Wait until about 2 minutes have passed since step 2. Then
 click **🧹 New conversation**, and under **Try asking** click:
@@ -285,7 +287,7 @@ the site time zone (`SITE_TZ`):
 
 | When | What happened | Question to ask |
 |---|---|---|
-| Today, 1 h 50 min to 30 min before `es-setup` first ran | `10.10.8.77` SMB bulk copy saturates the 500 Mbps MPLS link (97%) and starves the GPU cluster's checkpoint writes (`10.10.9.11–14` → `10.30.3.10` NFS) | "Why was the GPU cluster slow earlier today?" |
+| Today, 30 minutes ending 30–45 minutes before `es-setup` first ran | `10.10.8.77` SMB bulk copy saturates the 500 Mbps MPLS link (97%) and starves the GPU cluster's checkpoint writes (`10.10.9.11–14` → `10.30.3.10` NFS) | "Why was the GPU cluster slow earlier today?" |
 | 3 days ago 03:00–09:30 | rsync backup overran its 01:00–03:00 window on the DCI link | "Did the nightly backup behave differently in the last week?" |
 | 5 days ago 16:00–17:10 | Windows update storm, about 780 Mbps on the internet uplink | "Find the biggest anomalies in the last 7 days." |
 | 8 days ago 10:40 | `10.10.3.45` uploads to `185.220.101.7` | "Has 10.10.3.45 ever sent unusual amounts of data to the internet?" |

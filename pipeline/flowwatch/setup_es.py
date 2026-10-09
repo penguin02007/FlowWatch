@@ -85,7 +85,8 @@ def load_history_times(es: Elasticsearch) -> tuple[datetime, datetime] | None:
     except NotFoundError:
         return None
     anchor = datetime.fromisoformat(meta["history_anchor"]).astimezone(SITE_TZ)
-    # Stacks created before the setup time was stored keep the old 07:40-09:00 incident.
+    # Stacks created before the setup time was stored already have their incident backfilled,
+    # and re-runs only fill newer gaps, so any past time works here.
     setup_at = meta.get("history_setup_at")
     setup_at = datetime.fromisoformat(setup_at) if setup_at else anchor + timedelta(hours=9, minutes=30)
     return anchor, setup_at.astimezone(SITE_TZ)

@@ -48,13 +48,15 @@ class ModelTest(unittest.TestCase):
         self.assertGreater(mpls_out, 0.9 * cap)
 
     def test_history_incidents(self):
-        setup_at = datetime(2026, 9, 29, 6, 0, tzinfo=timezone.utc)
+        setup_at = datetime(2026, 9, 29, 6, 7, tzinfo=timezone.utc)
         anchor = anchor_for(setup_at)
-        # The earlier-today incident runs 04:10-05:30, ending 30 minutes before setup.
-        for t, active in ((setup_at - timedelta(minutes=111), False),
-                          (setup_at - timedelta(minutes=110), True),
-                          (setup_at - timedelta(minutes=31), True),
-                          (setup_at - timedelta(minutes=30), False)):
+        # The earlier-today incident ends at least 30 minutes before setup, on a quarter hour:
+        # 05:37 rounds down to 05:30, so it runs 05:00-05:30.
+        incident_start = datetime(2026, 9, 29, 5, 0, tzinfo=timezone.utc)
+        for t, active in ((incident_start - timedelta(minutes=1), False),
+                          (incident_start, True),
+                          (incident_start + timedelta(minutes=29), True),
+                          (incident_start + timedelta(minutes=30), False)):
             self.assertEqual(("smb-bulk-copy", 1.0) in history_scenarios(t, anchor, setup_at), active, t)
         # Fixed-time incidents still follow the anchor day.
         t = anchor - timedelta(days=5) + timedelta(hours=16, minutes=30)
